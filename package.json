@@ -7,8 +7,10 @@
   "scripts": {
     "test:a11y:smoke": "cypress run --browser electron --headless --spec cypress/e2e/smoke.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000",
 
-    "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
+    "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --spec \"cypress/e2e/*{accesibilidad-sitemap,a11y-flujos}.cy.js\"",
+     "test:a11y:flujos": "cross-env CYPRESS_baseUrl=https://www.hiexperience.es cypress run --browser electron --headless --spec cypress/e2e/a11y-flujos.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000,video=false",
 
+    "test:a11y:flujos:site": "cross-env CYPRESS_baseUrl=$SITE_URL cypress run --browser electron --headless --spec cypress/e2e/a11y-flujos.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000,video=false",
     "// --------- EJECUCIONES BASE ---------": "====================",
     "auditoria": "cross-env PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file": "cross-env FORCE_FILE_LINKS=1 npm run test:evidencias",
