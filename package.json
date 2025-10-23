@@ -5,6 +5,8 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
+    "test:a11y:smoke": "cypress run --browser electron --headless --spec cypress/e2e/smoke.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000",
+
     "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
 
     "// --------- EJECUCIONES BASE ---------": "====================",
@@ -17,7 +19,7 @@
 
     "// --------- SHEETS/NUMBERS (,) ---------": "====================",
     "auditoria:sheets": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
-    "auditoria:file:sheets": "cross-env CSV_MODE=sheets LINK_MODE=formula FORCE_FILE_LINKS=1 npm run test:evidencias",
+    "auditoria:file:sheets": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:sheets:local": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
     "auditoria:sheets:local:plain": "cross-env CSV_MODE=sheets LINK_MODE=plain PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
 
@@ -31,9 +33,7 @@
     "deploy:surge": "surge ./ --domain $SURGE_DOMAIN",
     "auditoria:sheets:surge": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=$SURGE_PUBLIC_BASE npm run test:evidencias",
     "abrir:cypress": "cypress open",
-
     "abrir:informe": "node scripts/abrir-informe.js",
-
     "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
     "posttest:evidencias": "node scripts/abrir-informe.js || true"
   },
