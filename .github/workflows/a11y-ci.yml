@@ -33,17 +33,54 @@ jobs:
         env:
           CYPRESS_baseUrl: ${{ env.BASE_URL }}
 
-      - name: Upload Cypress artifacts
+      # ---- Construir nombre de carpeta auditoría: DD-MM-YYYY-<host> ----
+      - name: Compute audit dir
+        run: |
+          DATE="$(TZ=Europe/Madrid date +'%d-%m-%Y')"   # ajusta TZ si prefieres UTC
+          SITE="$(node -e "console.log(new URL(process.env.BASE_URL).hostname.replace(/^www\./,''))")"
+          echo "AUDIT_DIR_NAME=${DATE}-${SITE}" >> "$GITHUB_ENV"
+          echo "📁 auditorias/${DATE}-${SITE}"
+
+      # ---- Normalizar carpeta si Cypress la creó como *-sitio-desconocido ----
+      - name: Normalize audit folder (optional)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "auditorias/${AUDIT_DIR_NAME}"
+          UNKNOWN="$(ls -d auditorias/*-sitio-desconocido 2>/dev/null || true)"
+          if [ -n "$UNKNOWN" ]; then
+            echo "🔁 Renombrando $UNKNOWN -> auditorias/${AUDIT_DIR_NAME}"
+            shopt -s dotglob nullglob
+            mv "$UNKNOWN"/* "auditorias/${AUDIT_DIR_NAME}/" || true
+            rmdir "$UNKNOWN" || true
+          fi
+          if [ ! -f "auditorias/${AUDIT_DIR_NAME}/README.txt" ]; then
+            cat > "auditorias/${AUDIT_DIR_NAME}/README.txt" <<'TXT'
+Auditoría A11y generada por CI
+- Estructura: auditorias/<fecha>-<site>/
+- Contiene: screenshots, videos y ficheros CSV/TSV/JSON
+TXT
+          fi
+
+      # ---- Subir el paquete completo de auditoría ----
+      - name: Upload A11y bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: auditorias
-          # Captura evidencias en tu estructura real y las rutas clásicas de Cypress
+          name: auditorias-${{ env.AUDIT_DIR_NAME }}
           path: |
-            auditorias/**/screenshots/**
-            auditorias/**/videos/**
-            auditorias/**/*.{csv,tsv,json,xml}
+            auditorias/${{ env.AUDIT_DIR_NAME }}/**
+          retention-days: 30
+          if-no-files-found: error
+
+      # ---- (Opcional) Artefactos legacy de Cypress ----
+      - name: Upload legacy Cypress folders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-legacy
+          path: |
             cypress/screenshots/**
             cypress/videos/**
-          retention-days: 14
+          retention-days: 7
           if-no-files-found: ignore
