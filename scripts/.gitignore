@@ -1,0 +1,21 @@
+# Node / dependencias
+node_modules/
+
+# Build / artefactos
+dist/
+coverage/
+
+# Cypress
+cypress/videos/
+# Si vuelves a la carpeta por defecto:
+# cypress/screenshots/
+
+# Informes generados (se recrean cada día)
+auditorias/
+
+# Sistema / IDE
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.env
