@@ -1,0 +1,43 @@
+name: A11y CI (Cypress headless)
+
+on:
+  push:
+    branches: [ main, artifacts ]
+  pull_request:
+
+jobs:
+  a11y:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: "http://localhost:5173" # 3000 para Next, 8080 http-server
+      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build app (si aplica)
+        run: npm run build --if-present
+
+      - name: Start app (si aplica)
+        run: npm run start --if-present &
+
+      - name: Esperar a que responda la app
+        run: npx wait-on $BASE_URL
+
+      - name: Verificar Cypress (opcional)
+        run: npx cypress verify
+
+      - name: Ejecutar Cypress (headless)
+        run: npm run test:a11y
+        env:
+          CYPRESS_baseUrl: ${{ env.BASE_URL }}
