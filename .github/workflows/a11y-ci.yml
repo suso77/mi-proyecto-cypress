@@ -11,6 +11,9 @@ jobs:
     env:
       BASE_URL: "https://www.hiexperience.es"
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
+      # ==== Quality Gate (ajusta a tus criterios) ====
+      CRITICAL_MAX: "0"
+      SERIOUS_MAX: "5"
 
     steps:
       - name: Checkout
@@ -61,6 +64,55 @@ Auditoría A11y generada por CI
 - Contiene: screenshots, videos y ficheros CSV/TSV/JSON
 TXT
           fi
+
+      # ---- QUALITY GATE: fallar si critical > X o serious > Y ----
+      - name: Quality gate (critical > ${{ env.CRITICAL_MAX }} or serious > ${{ env.SERIOUS_MAX }})
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Busca un informe en la carpeta (TSV o CSV)
+          REPORT="$(ls -1 auditorias/${AUDIT_DIR_NAME}/*.{tsv,csv} 2>/dev/null | head -n1 || true)"
+          if [ -z "${REPORT}" ]; then
+            echo "❌ No se encontró informe (.tsv/.csv) en auditorias/${AUDIT_DIR_NAME}/"
+            ls -la "auditorias/${AUDIT_DIR_NAME}" || true
+            exit 1
+          fi
+          echo "📄 Informe: ${REPORT}"
+
+          # Decide separador por extensión
+          SEP=","
+          [[ "${REPORT}" == *.tsv ]] && SEP=$'\t'
+
+          # Cuenta filas con severidad 'critical' y 'serious' (case-insensitive).
+          # No dependemos de columna fija: buscamos cualquier campo con ese valor exacto.
+          if [[ "${SEP}" == $'\t' ]]; then
+            read CRIT SER <<< "$(awk -F'\t' 'NR>1{ for(i=1;i<=NF;i++){ v=tolower($i); if(v=="critical") c++; if(v=="serious") s++; } } END{ printf("%d %d", c+0, s+0) }' "${REPORT}")"
+          else
+            read CRIT SER <<< "$(awk -F',' 'NR>1{ for(i=1;i<=NF;i++){ v=tolower($i); gsub(/^ *| *$/,"",v); if(v=="critical") c++; if(v=="serious") s++; } } END{ printf("%d %d", c+0, s+0) }' "${REPORT}")"
+          fi
+
+          echo "📊 Totales → critical=${CRIT}, serious=${SER} (límites: critical≤${CRITICAL_MAX}, serious≤${SERIOUS_MAX})"
+
+          # Guarda resumen en JSON dentro de la carpeta de auditoría
+          cat > "auditorias/${AUDIT_DIR_NAME}/quality-gate.json" <<JSON
+          { "critical": ${CRIT}, "serious": ${SER}, "critical_max": ${CRITICAL_MAX}, "serious_max": ${SERIOUS_MAX} }
+JSON
+
+          FAIL=0
+          if [ "${CRIT}" -gt "${CRITICAL_MAX}" ]; then
+            echo "❌ Quality gate: critical (${CRIT}) > ${CRITICAL_MAX}"
+            FAIL=1
+          fi
+          if [ "${SER}" -gt "${SERIOUS_MAX}" ]; then
+            echo "❌ Quality gate: serious (${SER}) > ${SERIOUS_MAX}"
+            FAIL=1
+          fi
+
+          if [ "${FAIL}" -ne 0 ]; then
+            echo "⛔️ Quality gate FAILED"
+            exit 1
+          fi
+          echo "✅ Quality gate PASSED"
 
       # ---- Subir el paquete completo de auditoría ----
       - name: Upload A11y bundle
