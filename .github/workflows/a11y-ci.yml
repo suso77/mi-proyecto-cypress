@@ -37,8 +37,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cypress-artifacts
+          name: auditorias
+          # Captura evidencias en tu estructura real y las rutas clásicas de Cypress
           path: |
-            cypress/screenshots
-            cypress/videos
-          retention-days: 7
+            auditorias/**/screenshots/**
+            auditorias/**/videos/**
+            auditorias/**/*.{csv,tsv,json,xml}
+            cypress/screenshots/**
+            cypress/videos/**
+          retention-days: 14
+          if-no-files-found: ignore
