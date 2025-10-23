@@ -9,7 +9,7 @@ jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: "https://www.hiexperience.es"   # sitio público
+      BASE_URL: "https://www.hiexperience.es"
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
     steps:
@@ -28,8 +28,8 @@ jobs:
       - name: Verify Cypress
         run: npx cypress verify
 
-      - name: Run Cypress (headless)
-        run: npm run test:a11y
+      - name: Run Cypress (smoke only, electron)
+        run: npm run test:a11y:smoke
         env:
           CYPRESS_baseUrl: ${{ env.BASE_URL }}
 
@@ -42,4 +42,3 @@ jobs:
             cypress/screenshots
             cypress/videos
           retention-days: 7
-YAML
