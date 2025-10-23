@@ -1,102 +1,58 @@
-name: A11y CI (Cypress)
+name: A11y CI (Cypress headless)
 
 on:
   push:
     branches: [ main, artifacts ]
   pull_request:
-    branches: [ main ]
-  schedule:
-    - cron: "0 2 * * *" # 02:00 UTC
 
 jobs:
-  # =========================
-  # 1) SMOKE (rápido, sin gate)
-  # =========================
-  smoke:
+  a11y:
     runs-on: ubuntu-latest
     env:
       BASE_URL: "https://www.hiexperience.es"
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
+      CSV_MODE: "sheets"
+      LINK_MODE: "plain"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node (cache npm)
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
+
       - name: Install deps
         run: npm ci
+
       - name: Verify Cypress
         run: npx cypress verify
+
+      # ----- Ejecuta tus pruebas -----
+      # Opción 1: sólo smoke (rápido)
       - name: Run Cypress (smoke only, electron)
-        run: npm run test:a11y:smoke
+        run: npm run test:a11y:flujos
         env:
           CYPRESS_baseUrl: ${{ env.BASE_URL }}
-      - name: Upload legacy Cypress folders
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cypress-legacy
-          path: |
-            cypress/screenshots/**
-            cypress/videos/**
-          retention-days: 7
-          if-no-files-found: ignore
 
-  # ========================================
-  # 2) AUDIT (completa) con QUALITY GATE + comentario en PR
-  #    - PRs a main, nightly y push a 'artifacts'
-  # ========================================
-  audit:
-    if: |
-      github.event_name == 'pull_request' ||
-      github.event_name == 'schedule' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/artifacts')
-    needs: smoke
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    env:
-      BASE_URL: "https://www.hiexperience.es"
-      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
-      # ==== Quality Gate (ajusta a tus criterios) ====
-      CRITICAL_MAX: "0"
-      SERIOUS_MAX: "5"
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node (cache npm)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-      - name: Install deps
-        run: npm ci
-      - name: Verify Cypress
-        run: npx cypress verify
-
-      # Ejecuta la auditoría que genera informes (TSV/CSV + capturas/videos)
-      - name: Run Cypress (auditoría completa)
-        run: npm run auditoria:sheets
-        env:
-          CYPRESS_baseUrl: ${{ env.BASE_URL }}
+      # Opción 2 (si quieres auditoría completa en el CI): descomenta
+      # - name: Run Full Audit (sitemap + flujos)
+      #   run: npm run auditoria:sheets:plain
 
       # ---- Construir nombre de carpeta auditoría: DD-MM-YYYY-<host> ----
       - name: Compute audit dir
         run: |
-          DATE="$(TZ=Europe/Madrid date +'%d-%m-%Y')"
+          DATE="$(TZ=Europe/Madrid date +'%d-%m-%Y')"     # ajusta TZ si prefieres UTC
           SITE="$(node -e "console.log(new URL(process.env.BASE_URL).hostname.replace(/^www\./,''))")"
           echo "AUDIT_DIR_NAME=${DATE}-${SITE}" >> "$GITHUB_ENV"
           echo "📁 auditorias/${DATE}-${SITE}"
 
       # ---- Normalizar carpeta si Cypress la creó como *-sitio-desconocido ----
       - name: Normalize audit folder (optional)
-        shell: bash
         run: |
-          set -euxo pipefail
+          set -eux
           mkdir -p "auditorias/${AUDIT_DIR_NAME}"
           UNKNOWN="$(ls -d auditorias/*-sitio-desconocido 2>/dev/null || true)"
           if [ -n "$UNKNOWN" ]; then
@@ -105,76 +61,18 @@ jobs:
             mv "$UNKNOWN"/* "auditorias/${AUDIT_DIR_NAME}/" || true
             rmdir "$UNKNOWN" || true
           fi
+          # Archivos mínimos útiles
           if [ ! -f "auditorias/${AUDIT_DIR_NAME}/README.txt" ]; then
-            cat > "auditorias/${AUDIT_DIR_NAME}/README.txt" <<'TXT'
-Auditoría A11y generada por CI
-- Estructura: auditorias/<fecha>-<site>/
-- Contiene: screenshots, videos y ficheros CSV/TSV/JSON
+            cat > "auditorias/${AUDIT_DIR_NAME}/README.txt" <<TXT
+Auditoría A11y
+- Fecha: ${AUDIT_DIR_NAME%%-*}
+- Sitio: ${AUDIT_DIR_NAME#*-}
+- Base URL: ${BASE_URL}
+Generado por CI.
 TXT
           fi
 
-      # ---- QUALITY GATE ----
-      - name: Quality gate (critical > ${{ env.CRITICAL_MAX }} or serious > ${{ env.SERIOUS_MAX }})
-        shell: bash
-        run: |
-          set -euo pipefail
-          REPORT="$(ls -1 auditorias/${AUDIT_DIR_NAME}/*.{tsv,csv} 2>/dev/null | head -n1 || true)"
-          if [ -z "${REPORT}" ]; then
-            echo "❌ No se encontró informe (.tsv/.csv) en auditorias/${AUDIT_DIR_NAME}/"
-            ls -la "auditorias/${AUDIT_DIR_NAME}" || true
-            exit 1
-          fi
-          echo "📄 Informe: ${REPORT}"
-          SEP=","
-          [[ "${REPORT}" == *.tsv ]] && SEP=$'\t'
-          if [[ "${SEP}" == $'\t' ]]; then
-            read CRIT SER <<< "$(awk -F'\t' 'NR>1{ for(i=1;i<=NF;i++){ v=tolower($i); if(v=="critical") c++; if(v=="serious") s++; } } END{ printf("%d %d", c+0, s+0) }' "${REPORT}")"
-          else
-            read CRIT SER <<< "$(awk -F',' 'NR>1{ for(i=1;i<=NF;i++){ v=tolower($i); gsub(/^ *| *$/,"",v); if(v=="critical") c++; if(v=="serious") s++; } } END{ printf("%d %d", c+0, s+0) }' "${REPORT}")"
-          fi
-          echo "📊 Totales → critical=${CRIT}, serious=${SER} (límites: critical≤${CRITICAL_MAX}, serious≤${SERIOUS_MAX})"
-          cat > "auditorias/${AUDIT_DIR_NAME}/quality-gate.json" <<JSON
-          { "critical": ${CRIT}, "serious": ${SER}, "critical_max": ${CRITICAL_MAX}, "serious_max": ${SERIOUS_MAX} }
-JSON
-          FAIL=0
-          if [ "${CRIT}" -gt "${CRITICAL_MAX}" ]; then
-            echo "❌ Quality gate: critical (${CRIT}) > ${CRITICAL_MAX}"; FAIL=1; fi
-          if [ "${SER}" -gt "${SERIOUS_MAX}" ]; then
-            echo "❌ Quality gate: serious (${SER}) > ${SERIOUS_MAX}"; FAIL=1; fi
-          if [ "${FAIL}" -ne 0 ]; then
-            echo "⛔️ Quality gate FAILED"; exit 1; fi
-          echo "✅ Quality gate PASSED"
-
-      # ---- Resumen Markdown para el PR ----
-      - name: Build PR summary (QUALITY.md)
-        if: always()
-        shell: bash
-        run: |
-          FILE="auditorias/${AUDIT_DIR_NAME}/quality-gate.json"
-          if [ ! -f "$FILE" ]; then
-            echo "# Quality Gate\n\nNo report found." > "auditorias/${AUDIT_DIR_NAME}/QUALITY.md"
-            exit 0
-          fi
-          CRIT=$(jq -r '.critical' "$FILE")
-          SER=$(jq -r '.serious' "$FILE")
-          CMAX=$(jq -r '.critical_max' "$FILE")
-          SMAX=$(jq -r '.serious_max' "$FILE")
-          STATUS="✅ **PASSED**"
-          if [ "$CRIT" -gt "$CMAX" ] || [ "$SER" -gt "$SMAX" ]; then
-            STATUS="❌ **FAILED**"
-          fi
-          cat > "auditorias/${AUDIT_DIR_NAME}/QUALITY.md" <<EOF
-# A11y Quality Gate
-
-- critical: **$CRIT** (max $CMAX)  
-- serious:  **$SER** (max $SMAX)  
-
-Resultado: $STATUS
-
-> Carpeta completa de auditoría: \`auditorias/${AUDIT_DIR_NAME}/\`
-EOF
-
-      # ---- Subir paquete completo de auditoría ----
+      # ---- Subir el paquete completo de auditoría ----
       - name: Upload A11y bundle
         if: always()
         uses: actions/upload-artifact@v4
@@ -185,31 +83,21 @@ EOF
           retention-days: 30
           if-no-files-found: error
 
-      # ---- Comentario automático en el PR con el resumen ----
-      - name: Comment summary on PR
-        if: |
-          always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+      # ---- Subir ficheros deduplicados (CSV/TSV) si existen ----
+      - name: Upload deduped reports
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          script: |
-            const fs = require('fs');
-            const path = `auditorias/${process.env.AUDIT_DIR_NAME}/QUALITY.md`;
-            let body = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '# A11y Quality Gate\n\n(No summary)';
-            const artifactName = `auditorias-${process.env.AUDIT_DIR_NAME}`;
-            body += `\n\n**Artifacts**: busca el ZIP **${artifactName}** en la pestaña *Actions → Artifacts* del run.`;
-            const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 });
-            const marker = '<!-- a11y-quality-gate -->';
-            const existing = comments.find(c => c.user.type === 'Bot' && c.body && c.body.includes(marker));
-            const commentBody = `${marker}\n${body}`;
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: commentBody });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body: commentBody });
-            }
+          name: a11y-dedup-${{ env.AUDIT_DIR_NAME }}
+          path: |
+            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*dedup*.csv
+            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*dedup*.tsv
+            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*-resumen*.csv
+            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*-resumen*.tsv
+          retention-days: 30
+          if-no-files-found: ignore
 
-      # (Opcional) cypress legacy
+      # ---- (Opcional) legacy cypress folders por compatibilidad ----
       - name: Upload legacy Cypress folders
         if: always()
         uses: actions/upload-artifact@v4
@@ -220,3 +108,30 @@ EOF
             cypress/videos/**
           retention-days: 7
           if-no-files-found: ignore
+
+      # ---- Comentar en el PR con enlace a artifacts ----
+      - name: Comment on PR with summary and artifacts link
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const auditName = `auditorias-${process.env.AUDIT_DIR_NAME}`;
+            const dedupName = `a11y-dedup-${process.env.AUDIT_DIR_NAME}`;
+            const lines = [];
+            lines.push(`### ♿ A11y CI – Evidencias`);
+            lines.push(`**Base URL:** ${process.env.BASE_URL}`);
+            lines.push(`**Carpeta:** \`auditorias/${process.env.AUDIT_DIR_NAME}\``);
+            lines.push('');
+            lines.push(`- 📦 Artifact principal: **${auditName}**`);
+            lines.push(`- 🧹 Artifact deduplicado: **${dedupName}** (si existe)`);
+            lines.push(`- 🔗 Ver artifacts del run: [Actions → artifacts](${runUrl})`);
+            lines.push('');
+            lines.push(`> El informe usa \`LINK_MODE=plain\` para URLs en texto plano.`);
+            const body = lines.join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body
+            });
