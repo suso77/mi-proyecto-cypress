@@ -6,11 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "test:a11y:smoke": "cypress run --browser electron --headless --spec cypress/e2e/smoke.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000",
-
     "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --spec \"cypress/e2e/*{accesibilidad-sitemap,a11y-flujos}.cy.js\"",
     "test:a11y:flujos": "cross-env CYPRESS_baseUrl=https://www.hiexperience.es cypress run --browser electron --headless --spec cypress/e2e/a11y-flujos.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000,video=false",
     "test:a11y:flujos:site": "cross-env CYPRESS_baseUrl=$SITE_URL cypress run --browser electron --headless --spec cypress/e2e/a11y-flujos.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000,video=false",
-
     "auditoria:sheets:plain": "cross-env CSV_MODE=sheets LINK_MODE=plain PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
 
     "// --------- EJECUCIONES BASE ---------": "====================",
@@ -42,7 +40,7 @@
     "abrir:informe": "node scripts/abrir-informe.js",
 
     "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
-    "posttest:evidencias": "node scripts/postprocess-informe.js || true && node scripts/abrir-informe.js || true"
+    "posttest:evidencias": "node scripts/postprocess-informe.js && node scripts/abrir-informe.js || true"
   },
   "keywords": [
     "cypress",
