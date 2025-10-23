@@ -9,14 +9,14 @@ jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: "http://localhost:5173" # 3000 para Next, 8080 http-server
+      BASE_URL: "https://www.hiexperience.es"   # sitio público
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node (cache npm)
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -25,19 +25,21 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Build app (si aplica)
-        run: npm run build --if-present
-
-      - name: Start app (si aplica)
-        run: npm run start --if-present &
-
-      - name: Esperar a que responda la app
-        run: npx wait-on $BASE_URL
-
-      - name: Verificar Cypress (opcional)
+      - name: Verify Cypress
         run: npx cypress verify
 
-      - name: Ejecutar Cypress (headless)
+      - name: Run Cypress (headless)
         run: npm run test:a11y
         env:
           CYPRESS_baseUrl: ${{ env.BASE_URL }}
+
+      - name: Upload Cypress artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            cypress/screenshots
+            cypress/videos
+          retention-days: 7
+YAML
