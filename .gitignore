@@ -1,2 +1,15 @@
+# dependencias
 node_modules
+
+# artefactos de auditoría
 auditorias/
+
+# variables de entorno (NO versionar)
+.env
+
+# (opcional) cosas típicas de Cypress/OS
+cypress/screenshots/
+cypress/videos/
+.DS_Store
+Thumbs.db
+
