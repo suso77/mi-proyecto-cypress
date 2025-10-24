@@ -1,0 +1,62 @@
+name: A11Y Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  a11y:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [chrome, firefox]  # añade electron si quieres
+    env:
+      CI: true
+      SITE_URL: ${{ secrets.SITE_URL }}
+      PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }} # si usas CDN
+      CSV_MODE: excel
+      LINK_MODE: formula
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Cypress run (${{ matrix.browser }})
+        run: npx cypress run --browser ${{ matrix.browser }}
+
+      - name: Postprocess CSV/TSV
+        run: node scripts/postprocess-informe.js
+
+      - name: Upload artifacts (auditorias/)
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-artifacts-${{ matrix.browser }}
+          path: auditorias/
+
+  # (Opcional) Publica a S3 si defines secrets de AWS y PUBLIC_BASE_URL apunta a ese bucket.
+  publish-s3:
+    if: ${{ always() && vars.A11Y_PUBLISH_S3 == 'true' }}
+    needs: [a11y]
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+      PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      - name: Publish to S3
+        run: bash scripts/ci-export-artifacts-s3.sh ./artifacts

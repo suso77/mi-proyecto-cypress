@@ -2,29 +2,29 @@
 import 'cypress-axe';
 
 describe('🔍 Diagnóstico del DOM auditado', () => {
-  const testUrl = 'https://cashgalicia.net/'; // prueba con una página con contenido visible
-
   it('📋 Muestra el contenido del DOM real antes del análisis', () => {
-    cy.visit(testUrl, { timeout: 120000, failOnStatusCode: false });
+    const url = Cypress.env('SITE_URL') || '/';
+    cy.visit(url, { failOnStatusCode: false, timeout: 120000 });
     cy.document().its('readyState').should('eq', 'complete');
-    cy.get('body', { timeout: 60000 }).should('be.visible');
-    cy.wait(5000);
+    cy.get('body').should('be.visible');
 
-    // Capturar el HTML actual del body
+    // dump del DOM
     cy.document().then((doc) => {
-      const html = doc.body.outerHTML;
-      cy.writeFile('cypress/downloads/debug-dom.html', html);
-      cy.task('log', '📄 DOM exportado: cypress/downloads/debug-dom.html');
+      const html = doc.documentElement.outerHTML;
+      const out = 'cypress/downloads/debug-dom.html';
+      cy.writeFile(out, html, 'utf8').then(() => cy.task('log', `📄 DOM exportado: ${out}`));
     });
 
-    // Inyectar Axe y comprobar existencia
     cy.injectAxe();
-    cy.window().its('axe').should('exist');
-
-    // Ejecutar auditoría básica y guardar resultado JSON
-    cy.checkA11y('body', null, (results) => {
-      cy.writeFile('cypress/downloads/debug-axe-results.json', results);
-      cy.task('log', `✅ Auditoría ejecutada. Resultados en debug-axe-results.json`);
-    });
+    cy.checkA11y(null, null, (violations) => {
+      const n = violations?.length || 0;
+      const file = 'cypress/downloads/debug-axe-results.json';
+      cy.writeFile(file, JSON.stringify(violations, null, 2), 'utf8')
+        .then(() => cy.task('log', `✅ Auditoría ejecutada. Resultados en ${file}`));
+      // ⚠️ NO fallamos: es un spec de diagnóstico
+      if (n > 0) {
+        cy.task('log', `${n} violaciones detectadas (debug); no se falla este test`);
+      }
+    }, true);
   });
 });

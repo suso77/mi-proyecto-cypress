@@ -1,7 +1,7 @@
 // cypress/support/wcag-map.js
 // ======================================================
 // WCAG_MAP + AXE_RULE_TO_WCAG + HELP_ES + EXPECTED_ES
-// + helpers para devolver criterio completo (code+title+url)
+// + helpers para normalizar criterio y textos en ES
 // ======================================================
 
 // ------------------------------------------------------
@@ -10,7 +10,7 @@
 // Valor: [ "N.N.N Título en español" o “WCAG 2.x Nivel Y”, "https://..." ]
 // ------------------------------------------------------
 const WCAG_MAP = {
-  // Nivel global por versión/nivel (contexto)
+  // Nivel global por versión/nivel (contexto — NO usar para “Criterio WCAG”)
   wcag2a:  ["WCAG 2.0 Nivel A", "https://www.w3.org/TR/WCAG20/"],
   wcag2aa: ["WCAG 2.0 Nivel AA", "https://www.w3.org/TR/WCAG20/"],
   wcag21a: ["WCAG 2.1 Nivel A", "https://www.w3.org/TR/WCAG21/"],
@@ -72,7 +72,7 @@ const WCAG_MAP = {
   wcag257: ["2.5.7 Movimientos de arrastre", "https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html"],
   wcag258: ["2.5.8 Tamaño del objetivo (mínimo)", "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"],
 
-  // 3.1 Comprensible: legibilidad
+  // 3.1 Comprensible
   wcag311: ["3.1.1 Idioma de la página", "https://www.w3.org/WAI/WCAG21/Understanding/language-of-page.html"],
   wcag312: ["3.1.2 Idioma de las partes", "https://www.w3.org/WAI/WCAG21/Understanding/language-of-parts.html"],
 
@@ -98,7 +98,7 @@ const WCAG_MAP = {
 };
 
 // ------------------------------------------------------
-// AXE_RULE_TO_WCAG: regla de axe -> [“N.N.N Título ES”, URL]
+// AXE_RULE_TO_WCAG — Regla axe -> [“N.N.N Título ES”, URL]
 // ------------------------------------------------------
 const AXE_RULE_TO_WCAG = {
   // Texto/Contraste
@@ -130,7 +130,7 @@ const AXE_RULE_TO_WCAG = {
   "link-name":             ["2.4.4 Propósito de los enlaces (en contexto)", "https://www.w3.org/WAI/WCAG21/Understanding/link-purpose-in-context.html"],
   "aria-input-field-name": ["4.1.2 Nombre, función, valor", "https://www.w3.org/WAI/WCAG21/Understanding/name-role-value.html"],
 
-  // ARIA (roles/propiedades/estados)
+  // ARIA
   "aria-allowed-role":       ["4.1.2 Nombre, función, valor", "https://www.w3.org/WAI/WCAG21/Understanding/name-role-value.html"],
   "aria-roles":              ["4.1.2 Nombre, función, valor", "https://www.w3.org/WAI/WCAG21/Understanding/name-role-value.html"],
   "aria-required-attr":      ["4.1.2 Nombre, función, valor", "https://www.w3.org/WAI/WCAG21/Understanding/name-role-value.html"],
@@ -146,20 +146,20 @@ const AXE_RULE_TO_WCAG = {
   "focus-order-semantics": ["2.4.3 Orden del foco", "https://www.w3.org/WAI/WCAG21/Understanding/focus-order.html"],
   "skip-link":             ["2.4.1 Evitar bloques", "https://www.w3.org/WAI/WCAG21/Understanding/bypass-blocks.html"],
 
-  // Formularios/labels
-  "label":                       ["3.3.2 Etiquetas o instrucciones", "https://www.w3.org/WAI/WCAG21/Understanding/labels-or-instructions.html"],
-  "form-field-multiple-labels":  ["3.3.2 Etiquetas o instrucciones", "https://www.w3.org/WAI/WCAG21/Understanding/labels-or-instructions.html"],
-  "autocomplete-valid":          ["1.3.5 Identificación del propósito de la entrada (advisory)", "https://www.w3.org/WAI/WCAG21/Understanding/identify-input-purpose.html"],
+  // Formularios
+  "label":                      ["3.3.2 Etiquetas o instrucciones", "https://www.w3.org/WAI/WCAG21/Understanding/labels-or-instructions.html"],
+  "form-field-multiple-labels": ["3.3.2 Etiquetas o instrucciones", "https://www.w3.org/WAI/WCAG21/Understanding/labels-or-instructions.html"],
+  "autocomplete-valid":         ["1.3.5 Identificación del propósito de la entrada (advisory)", "https://www.w3.org/WAI/WCAG21/Understanding/identify-input-purpose.html"],
 
   // Mobile/zoom
-  "meta-viewport":         ["1.4.4 Redimensionar texto", "https://www.w3.org/WAI/WCAG21/Understanding/resize-text.html"],
+  "meta-viewport": ["1.4.4 Redimensionar texto", "https://www.w3.org/WAI/WCAG21/Understanding/resize-text.html"],
 
   // 2.5.8 Target size
-  "target-size":           ["2.5.8 Tamaño del objetivo (mínimo)", "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"],
+  "target-size": ["2.5.8 Tamaño del objetivo (mínimo)", "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"],
 };
 
 // ------------------------------------------------------
-// HELP_ES y EXPECTED_ES (igual que ya tenías)
+// HELP_ES (resumen en español) — opcional
 // ------------------------------------------------------
 const HELP_ES = {
   "color-contrast": "El contraste entre el texto y el fondo es insuficiente. Aumenta el contraste para cumplir 1.4.3.",
@@ -197,6 +197,9 @@ const HELP_ES = {
   "target-size": "Asegura objetivos de interacción con tamaño mínimo suficiente (2.5.8)."
 };
 
+// ------------------------------------------------------
+// EXPECTED_ES (resultado esperado en español)
+// ------------------------------------------------------
 const EXPECTED_ES = {
   "color-contrast": "Aumentar el contraste de texto hasta ≥4.5:1 (o ≥3:1 si el texto es grande).",
   "non-text-contrast": "Asegurar contraste ≥3:1 en controles, iconos y gráficos esenciales.",
@@ -235,7 +238,7 @@ const EXPECTED_ES = {
   "button-name": "Todo botón debe tener un nombre accesible que describa su acción.",
   "empty-link": "Evitar enlaces sin texto/nombre accesible; añadir un propósito claro.",
 
-  // Fallback por código (si lo deduces)
+  // Fallback por código
   "1.1.1": "Proveer alternativas textuales significativas para el contenido no textual.",
   "1.3.1": "Representar estructura y relaciones con HTML semántico, roles y etiquetas.",
   "1.4.3": "Garantizar contraste suficiente entre texto y fondo para la lectura.",
@@ -258,48 +261,47 @@ const EXPECTED_ES = {
 // ------------------------------------------------------
 // Helpers
 // ------------------------------------------------------
-function pickSpecificWcagTag(tagsOrString = []) {
-  // Acepta array de tags o un string (fallback)
-  if (Array.isArray(tagsOrString)) {
-    const arr = tagsOrString.map(t => String(t).toLowerCase());
-    return arr.find(t => /^wcag\d{3,4}$/.test(t)) || '';
-  }
-  const s = String(tagsOrString).toLowerCase();
-  return /^wcag\d{3,4}$/.test(s) ? s : '';
-}
-
 function normalizeWcagTag(input = '') {
-  // Devuelve "N.N.N" si existe en el texto; si no, cadena vacía
   const m = String(input).match(/\b\d\.\d\.\d\b/);
   return m ? m[0] : '';
 }
 
-/**
- * Devuelve { code:'1.3.1', title:'Información y relaciones', url:'https://...' } o null.
- * Prioridad:
- *  1) tag WCAG específico presente en tags
- *  2) mapeo por regla de axe (AXE_RULE_TO_WCAG)
- *  3) null
- */
-function getWcagForRule(ruleId = '', tagsOrFallback = []) {
-  // 1) Buscar tag específico (wcag111, wcag131, wcag244, wcag1411, ...)
-  const tag = pickSpecificWcagTag(tagsOrFallback);
-  if (tag && WCAG_MAP[tag]) {
-    const [titleFull, url] = WCAG_MAP[tag];
-    const code = normalizeWcagTag(titleFull);
-    if (code) return { code, title: titleFull.replace(/^(\d\.\d\.\d)\s*/, ''), url };
+function getWcagForRule(ruleId = '', fallbackTag = '') {
+  if (AXE_RULE_TO_WCAG[ruleId]?.[0]) {
+    const title = AXE_RULE_TO_WCAG[ruleId][0];
+    const code = title.match(/^\d\.\d\.\d/);
+    if (code) return code[0];
   }
+  const t = normalizeWcagTag(fallbackTag);
+  return t || '';
+}
 
-  // 2) Fallback por regla axe
-  const hit = AXE_RULE_TO_WCAG[ruleId];
-  if (hit) {
-    const [titleFull, url] = hit;
-    const code = normalizeWcagTag(titleFull);
-    if (code) return { code, title: titleFull.replace(/^(\d\.\d\.\d)\s*/, ''), url };
+// ➕ Resuelve { code, text, url } del criterio exacto.
+function resolveWcag(ruleId = '', tags = []) {
+  const t = (tags || []).map((x) => String(x).toLowerCase());
+  const critTag = t.find((x) => /^wcag\d{3,4}$/.test(x));
+  if (critTag && WCAG_MAP[critTag]) {
+    const [text, url] = WCAG_MAP[critTag];
+    const code = (text.match(/^\d\.\d\.\d/) || [''])[0];
+    return { code, text, url };
   }
+  if (AXE_RULE_TO_WCAG[ruleId]) {
+    const [text, url] = AXE_RULE_TO_WCAG[ruleId];
+    const code = (text.match(/^\d\.\d\.\d/) || [''])[0];
+    return { code, text, url };
+  }
+  return { code: '', text: 'Criterio WCAG no identificado', url: 'https://www.w3.org/WAI/WCAG21/Understanding/overview.html' };
+}
 
-  // 3) Nada
-  return null;
+function getWcagDisplay(ruleId = '', tags = []) {
+  const { code, text } = resolveWcag(ruleId, tags);
+  if (!code) return '—';
+  return text; // ya viene "N.N.N Título"
+}
+
+function criterionUrlFor(ruleId = '', tags = []) {
+  const { url } = resolveWcag(ruleId, tags);
+  return url;
 }
 
 function helpES(ruleId = '', originalHelp = '') {
@@ -308,9 +310,8 @@ function helpES(ruleId = '', originalHelp = '') {
 
 function expectedES(ruleId = '') {
   if (EXPECTED_ES[ruleId]) return EXPECTED_ES[ruleId];
-  const wcag = getWcagForRule(ruleId, []);
-  if (wcag && EXPECTED_ES[wcag.code]) return EXPECTED_ES[wcag.code];
-  return 'Aplicar la recomendación de la regla o del criterio WCAG equivalente.';
+  const code = getWcagForRule(ruleId, '');
+  return EXPECTED_ES[code] || 'Aplicar la recomendación de la regla o del criterio WCAG equivalente.';
 }
 
 // ------------------------------------------------------
@@ -322,11 +323,14 @@ module.exports = {
   HELP_ES,
   EXPECTED_ES,
 
-  // helpers
-  pickSpecificWcagTag,
+  // helpers que usa el writer/spec
   normalizeWcagTag,
-  getWcagForRule, // <-- ahora devuelve {code,title,url}
+  getWcagForRule,
   helpES,
   expectedES,
-};
 
+  // extras recomendados
+  getWcagDisplay,
+  criterionUrlFor,
+  resolveWcag,
+};

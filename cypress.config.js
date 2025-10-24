@@ -1,140 +1,102 @@
 // cypress.config.js
-const { defineConfig } = require("cypress");
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
-const https = require("https");
-const { parseStringPromise } = require("xml2js");
+const { defineConfig } = require('cypress');
+const fs = require('fs');
+const path = require('path');
 
-// 👉 usamos el task externo que escribe el informe con i18n WCAG
-const { createSaveA11yResultsTask } = require("./scripts/escritor");
-
-/* ===============================
-   📅 Directorios base (COMUNES)
-   =============================== */
-const SITE_SLUG = (process.env.SITE_URL || "https://sitio-desconocido")
-  .replace(/^https?:\/\//, "")
-  .replace(/\/$/, "");
-const FECHA = new Date().toLocaleDateString("es-ES").replace(/\//g, "-");
-const BASE_DIR = path.join("auditorias", `${FECHA}-${SITE_SLUG}`);
-
-// Aseguramos que el escritor conozca el subdirectorio de auditoría.
-process.env.AUDIT_DIR_NAME = process.env.AUDIT_DIR_NAME || `${FECHA}-${SITE_SLUG}`;
-
-// ⬅️ Nombre exacto del spec que hace capturas
-const SPEC_SUBDIR = "accesibilidad-sitemap.cy.js";
-
-// Carpeta final de screenshots
-const SCREENSHOTS_DIR = path.join(BASE_DIR, "screenshots");
-
-/* ===============================
-   🧰 Helpers (solo sitemap aquí)
-   =============================== */
-async function fetchSitemapUrls() {
-  const sitemapUrl = `${process.env.SITE_URL}/sitemap.xml`;
-  console.log(`📥 Leyendo sitemap desde: ${sitemapUrl}`);
-  try {
-    const agent = new https.Agent({ rejectUnauthorized: false });
-    const response = await axios.get(sitemapUrl, { httpsAgent: agent, timeout: 15000 });
-    const xml = response.data;
-    const parsed = await parseStringPromise(xml);
-
-    let urls =
-      parsed.urlset?.url?.map((u) => u.loc[0]) ||
-      parsed.sitemapindex?.sitemap?.map((s) => s.loc[0]) ||
-      [];
-
-    urls = urls.map((u) => {
-      try {
-        const x = new URL(u);
-        x.hostname = x.hostname.toLowerCase();
-        if (x.pathname !== "/" && x.pathname.endsWith("/")) x.pathname = x.pathname.slice(0, -1);
-        return x.toString();
-      } catch { return u; }
-    });
-
-    const initial = urls.length;
-    urls = [...new Set(urls)];
-    if (urls.length < initial) console.log(`⚠️ Se eliminaron ${initial - urls.length} URLs duplicadas.`);
-
-    console.log(`✅ ${urls.length} URLs encontradas en sitemap.`);
-    return urls;
-  } catch (error) {
-    console.error("❌ Error leyendo sitemap:", error.message);
-    return [];
-  }
+function todayFolderFor(baseUrl) {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const host = (new URL(baseUrl || 'http://localhost')).host.replace(/[:/\\]/g, '-');
+  return path.join('auditorias', `${dd}-${mm}-${yyyy}-${host}`);
 }
 
-/* ===============================
-   ⚙️ CONFIGURACIÓN CYPRESS
-   =============================== */
 module.exports = defineConfig({
-  screenshotsFolder: SCREENSHOTS_DIR,
   e2e: {
+    baseUrl: process.env.CYPRESS_baseUrl || process.env.SITE_URL || 'https://www.hiexperience.es',
+    video: false,
+    defaultCommandTimeout: 15000,
+    pageLoadTimeout: 120000,
+
     setupNodeEvents(on, config) {
-      on("before:run", () => {
-        if (!fs.existsSync(path.join(SCREENSHOTS_DIR, SPEC_SUBDIR))) {
-          fs.mkdirSync(path.join(SCREENSHOTS_DIR, SPEC_SUBDIR), { recursive: true });
-        }
-        console.log("📂 screenshotsFolder:", path.resolve(SCREENSHOTS_DIR));
-      });
-
-      on("before:browser:launch", (browser = {}, launchOptions) => {
-        if (browser.name === "electron" || browser.name === "chrome") {
-          launchOptions.args.push("--disable-web-security");
-          launchOptions.args.push("--allow-file-access-from-files");
-          launchOptions.args.push("--disable-site-isolation-trials");
-          launchOptions.args.push("--disable-features=NetworkService");
-          launchOptions.args.push("--ignore-certificate-errors");
-          console.log(`🔓 ${browser.name} configurado para permitir win.eval(axeSource)`);
-        }
-        return launchOptions;
-      });
-
-      // 👉 Integramos tasks (incluye el writer externo actualizado)
-      on("task", {
-        fetchSitemapUrls,
-        log(obj) { console.dir(obj, { depth: null }); return null; },
-
-        resetTodayReport() {
-          const CSV_MODE = (process.env.CSV_MODE || "excel").toLowerCase(); // excel|sheets|tsv
-          const CSV_NAME = CSV_MODE === "tsv" ? "informe-accesibilidad.tsv" : "informe-accesibilidad.csv";
-          const RESULT_FILE = path.join(BASE_DIR, CSV_NAME);
-          if (fs.existsSync(RESULT_FILE)) {
-            fs.unlinkSync(RESULT_FILE);
-            console.log(`🧹 ${CSV_NAME} eliminado: ${RESULT_FILE}`);
-          } else {
-            console.log("🧹 No había informe previo que eliminar.");
-          }
-          return null;
+      on('task', {
+        // ----- LOG -----
+        log(msg) {
+          const text = typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2);
+          console.log('[task:log]', text);
+          return null; // siempre devolver algo
         },
 
-        // ⬇️ Nuestro task que escribe el informe (i18n + enlaces OK)
-        saveA11yResults: createSaveA11yResultsTask(config, {
-          FECHA,
-          SITE_SLUG,
-          BASE_DIR,
-          SPEC_SUBDIR,
-          SCREENSHOTS_DIR,
-        }),
+        // ----- RESET CARPETA DE HOY -----
+        resetTodayReport() {
+          const folder = todayFolderFor(config.baseUrl);
+          if (fs.existsSync(folder)) {
+            fs.rmSync(folder, { recursive: true, force: true });
+          }
+          console.log('[task:resetTodayReport] Eliminada carpeta', path.resolve(folder));
+          return true;
+        },
+
+        // ----- PREPARAR CARPETA/ARCHIVOS -----
+        'a11y:prepareTodayReport'() {
+          const folder = todayFolderFor(config.baseUrl);
+          const csvPath = path.join(folder, 'informe.csv');
+          const mdPath  = path.join(folder, 'informe.md');
+          fs.mkdirSync(folder, { recursive: true });
+
+          const sep =
+            process.env.CSV_MODE === 'excel' ? ';' :
+            process.env.CSV_MODE === 'tsv'   ? '\t' : ',';
+
+          if (!fs.existsSync(csvPath)) {
+            const header = [
+              'url','id','impact','description','help','helpUrl','selector','html','failureSummary'
+            ].join(sep) + '\n';
+            fs.writeFileSync(csvPath, header);
+          }
+          if (!fs.existsSync(mdPath)) {
+            fs.writeFileSync(mdPath, `# Informe A11y – ${new Date().toLocaleString()}\n\n`);
+          }
+
+          console.log('[task:prepareTodayReport] Carpeta:', path.resolve(folder));
+          return { folder, csv: csvPath, md: mdPath };
+        },
+
+        // ----- APPEND CSV -----
+        'a11y:appendCsv'(rows) {
+          const folder = todayFolderFor(config.baseUrl);
+          const csvPath = path.join(folder, 'informe.csv');
+          fs.mkdirSync(folder, { recursive: true });
+
+          const sep =
+            process.env.CSV_MODE === 'excel' ? ';' :
+            process.env.CSV_MODE === 'tsv'   ? '\t' : ',';
+
+          const lines = rows.map(r => [
+            r.url, r.id, r.impact, r.description, r.help, r.helpUrl,
+            (r.selector || '').replace(/[\r\n]+/g, ' '),
+            (r.html || '').replace(/[\r\n]+/g, ' '),
+            (r.failureSummary || '').replace(/[\r\n]+/g, ' ')
+          ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(sep)).join('\n');
+
+          fs.appendFileSync(csvPath, lines + '\n');
+          return true;
+        },
+
+        // ----- APPEND MARKDOWN -----
+        'a11y:appendMd'(markdown) {
+          const folder = todayFolderFor(config.baseUrl);
+          const mdPath = path.join(folder, 'informe.md');
+          fs.mkdirSync(folder, { recursive: true });
+          fs.appendFileSync(mdPath, markdown);
+          return true;
+        },
       });
 
-      // Exponer env a la spec
-      config.env.SITE_URL = process.env.SITE_URL || config.env.SITE_URL;
-      config.env.PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || config.env.PUBLIC_BASE_URL;
-      console.log("🌍 SITE_URL:", config.env.SITE_URL);
-      console.log("📂 PUBLIC_BASE_URL:", config.env.PUBLIC_BASE_URL);
       return config;
     },
-
-    viewportWidth: 1440,
-    viewportHeight: 900,
-    defaultCommandTimeout: 60000,
-    pageLoadTimeout: 300000,
-    baseUrl: process.env.SITE_URL || "https://www.hiexperience.es",
-    video: false,
-    screenshotOnRunFailure: true,
-    failOnStatusCode: false,
-    retries: 0,
   },
 });
+
+

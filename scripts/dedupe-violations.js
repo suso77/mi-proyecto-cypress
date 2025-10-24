@@ -1,133 +1,94 @@
 // scripts/dedupe-violations.js
-// Dedupe por (URL normalizada + Regla + snippet normalizado) y ordena por
-// Severidad → WCAG → URL → Regla. Incluye helpers de normalización.
+/* eslint-disable no-console */
 
-const TRACKING_PARAMS = new Set([
-  'utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','fbclid','mc_cid','mc_eid'
-]);
-
-const SEVERITY_ORDER = { critical: 0, serious: 1, alta: 1, high: 1, media: 2, moderate: 2, minor: 3, baja: 3, low: 3, unknown: 4 };
-
-function normalizeUrl(raw) {
-  try {
-    const u = new URL(String(raw).trim());
-    u.hash = '';
-    // limpia query de tracking
-    const kept = [];
-    u.searchParams.forEach((v, k) => {
-      if (!TRACKING_PARAMS.has(k.toLowerCase())) kept.push([k, v]);
-    });
-    u.search = '';
-    kept.forEach(([k, v]) => u.searchParams.append(k, v));
-    // trailing slash sólo en raíz
-    if (u.pathname !== '/' && u.pathname.endsWith('/')) {
-      u.pathname = u.pathname.replace(/\/+$/, '');
-    }
-    return u.toString();
-  } catch {
-    return String(raw || '').trim();
-  }
-}
-
-function stripHtml(input = '') {
-  return String(input)
-    .replace(/<\s*script[\s\S]*?<\/\s*script\s*>/gi, '')
-    .replace(/<\s*style[\s\S]*?<\/\s*style\s*>/gi, '')
-    .replace(/<[^>]*>/g, '');
-}
-
-function normalizeSnippet(snippet) {
-  const t = stripHtml(snippet)
+function normSnippet(html = '') {
+  return String(html)
     .toLowerCase()
-    .replace(/\d+/g, '0')
     .replace(/\s+/g, ' ')
+    .replace(/\s?style="[^"]*"/g, '')  // quita estilos inline
+    .replace(/\s?class="[^"]*"/g, '')  // quita clases (ruido)
     .trim();
-  return t.slice(0, 400);
 }
 
-function pullFirstWcagTag(tags = []) {
-  const t = (tags || []).find(x => /^wcag/i.test(x));
-  return t || '';
-}
+function dedupeViolations(violations = []) {
+  const byKey = new Map();
+  const summary = {
+    porSeveridad: {}, // { Alta: n, Media: n, ... }
+    porCriterio: {},  // { '1.4.3 Contraste (mínimo)': n, ... }
+  };
 
-function severityRank(impactRaw) {
-  const impact = String(impactRaw || '').toLowerCase();
-  return Object.prototype.hasOwnProperty.call(SEVERITY_ORDER, impact)
-    ? SEVERITY_ORDER[impact]
-    : SEVERITY_ORDER.unknown;
-}
+  const impactMap = { minor: 'Leve', moderate: 'Media', serious: 'Alta', critical: 'Crítica' };
 
-function dedupeRowsByKey(rows, { urlKey, ruleKey, snippetKey, wcagKey, severityKey }) {
-  const map = new Map();
+  for (const v of (violations || [])) {
+    if (!v || typeof v !== 'object') continue;
 
-  for (const r of rows) {
-    const url = normalizeUrl(r[urlKey]);
-    const ruleId = String(r[ruleKey] || '').trim();
-    const snippet = r[snippetKey] ?? '';
-    const snorm = normalizeSnippet(snippet);
-    const key = `${ruleId}|${url}|${snorm}`;
+    const ruleId   = v.id || 'unknown';
+    const impactES = impactMap[v.impact] || 'Media';
+    const criterio = v.criterio || v.wcag || 'Criterio WCAG no identificado';
 
-    if (!map.has(key)) {
-      map.set(key, {
-        ...r,
-        [urlKey]: url, // ya normalizada
-      });
-    }
+    // Acumula para el resumen (por número de nodos)
+    const count = (Array.isArray(v.nodes) && v.nodes.length) ? v.nodes.length : 1;
+    summary.porSeveridad[impactES] = (summary.porSeveridad[impactES] || 0) + count;
+    summary.porCriterio[criterio]  = (summary.porCriterio[criterio]  || 0) + count;
+
+    // Clave de de-dup: URL + regla + snippet normalizado
+    (v.nodes && v.nodes.length ? v.nodes : [{}]).forEach((n) => {
+      const url = n.pageUrl || v.url || '';
+      const sn  = normSnippet(n.html || n.failureSummary || '');
+      const key = `${url}::${ruleId}::${sn}`;
+
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          ...v,
+          url,
+          nodes: [{ ...n }],
+          snippet: sn,
+        });
+      }
+    });
   }
 
-  const deduped = Array.from(map.values());
+  const sevOrder = { 'Crítica': 1, 'Alta': 2, 'Media': 3, 'Leve': 4 };
 
-  // orden: Severidad → WCAG → URL → Regla
-  deduped.sort((a, b) => {
-    const s = severityRank(a[severityKey]) - severityRank(b[severityKey]);
-    if (s) return s;
-    const w = String(a[wcagKey] || '').localeCompare(String(b[wcagKey] || ''), 'en', { numeric: true });
-    if (w) return w;
-    const u = String(a[urlKey] || '').localeCompare(String(b[urlKey] || ''));
-    if (u) return u;
-    return String(a[ruleKey] || '').localeCompare(String(b[ruleKey] || ''));
+  const deduped = Array.from(byKey.values())
+    .sort((a, b) => {
+      const aSev = sevOrder[impactMap[a.impact] || 'Media'] || 99;
+      const bSev = sevOrder[impactMap[b.impact] || 'Media'] || 99;
+      if (aSev !== bSev) return aSev - bSev;
+
+      const aCrit = a.criterio || a.wcag || '';
+      const bCrit = b.criterio || b.wcag || '';
+      const cCmp  = aCrit.localeCompare(bCrit);
+      if (cCmp !== 0) return cCmp;
+
+      return (a.url || '').localeCompare(b.url || '');
+    });
+
+  return { deduped, summary };
+}
+
+function buildSummaryRows(summary = {}) {
+  const rows = [];
+  rows.push(['Resumen ejecutivo', 'Totales (nodos)']);
+  rows.push(['— Por severidad —', '']);
+
+  // Ordena severidad de mayor a menor
+  const sevKeys = ['Crítica', 'Alta', 'Media', 'Leve'];
+  sevKeys.forEach((k) => {
+    if (summary.porSeveridad && summary.porSeveridad[k]) {
+      rows.push([k, String(summary.porSeveridad[k])]);
+    }
   });
 
-  // resumen
-  const bySeverity = deduped.reduce((acc, r) => {
-    const k = String(r[severityKey] || 'unknown').toLowerCase();
-    acc[k] = (acc[k] || 0) + 1;
-    return acc;
-  }, {});
+  rows.push(['— Por criterio —', '']);
+  Object.entries(summary.porCriterio || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([k, v]) => rows.push([k, String(v)]));
 
-  const byWcag = deduped.reduce((acc, r) => {
-    const k = String(r[wcagKey] || 'sin-wcag');
-    acc[k] = (acc[k] || 0) + 1;
-    return acc;
-  }, {});
-
-  const totals = { count: deduped.length };
-
-  return { deduped, summary: { bySeverity, byWcag, totals } };
-}
-
-function buildSummaryRows(summary) {
-  const rows = [];
-  rows.push(['Resumen', 'Valor']);
-  rows.push(['Total violaciones (deduped)', summary.totals.count]);
-  rows.push([]);
-  rows.push(['Por severidad', 'Total']);
-  for (const sev of ['critical','serious','alta','moderate','media','minor','baja','unknown']) {
-    if (summary.bySeverity[sev]) rows.push([sev, summary.bySeverity[sev]]);
-  }
-  rows.push([]);
-  rows.push(['Por WCAG', 'Total']);
-  Object.entries(summary.byWcag)
-    .sort((a,b) => a[0].localeCompare(b[0], 'en', { numeric: true }))
-    .forEach(([k, n]) => rows.push([k, n]));
-  rows.push([]);
+  rows.push(['', '']);
   return rows;
 }
 
-module.exports = {
-  normalizeUrl,
-  normalizeSnippet,
-  dedupeRowsByKey,
-  buildSummaryRows,
-  severityRank,
-};
+module.exports = { dedupeViolations, buildSummaryRows, normSnippet };
+
+

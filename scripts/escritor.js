@@ -1,217 +1,184 @@
-// scripts/escritor.js
+/* eslint-disable no-console */
 const fs = require('fs');
 const path = require('path');
 
-const { getWcagForRule, helpES, expectedES } = require('../cypress/support/wcag-map');
+const {
+  getWcagDisplay,
+  criterionUrlFor,
+  helpES,
+  expectedES,
+} = require('../cypress/support/wcag-map');
 
-// ==========================================
-// Entorno de auditoría (coherente con cypress.config.js)
-// ==========================================
-const SITE_SLUG = (process.env.SITE_URL || 'https://sitio-desconocido')
-  .replace(/^https?:\/\//, '')
-  .replace(/\/$/, '');
-const FECHA = new Date().toLocaleDateString('es-ES').replace(/\//g, '-');
-const BASE_DIR = path.join('auditorias', `${FECHA}-${SITE_SLUG}`);
-const SPEC_SUBDIR = 'accesibilidad-sitemap.cy.js';
-const SCREENSHOTS_DIR = path.join(BASE_DIR, 'screenshots');
-
-// Expuesto por cypress.config.js (por si generas URL pública)
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
-const AUDIT_DIR_NAME  = process.env.AUDIT_DIR_NAME || `${FECHA}-${SITE_SLUG}`;
+const AUDIT_DIR_NAME  = process.env.AUDIT_DIR_NAME  || '';
+const SPEC_SUBDIR     = process.env.SPEC_SUBDIR     || 'accesibilidad-sitemap.cy.js';
 
-// ==========================================
-// Modos CSV / Links
-// ==========================================
-const CSV_MODE  = (process.env.CSV_MODE || 'excel').toLowerCase();           // excel | sheets | tsv
-const CSV_SEP   = CSV_MODE === 'tsv' ? '\t' : (CSV_MODE === 'sheets' ? ',' : ';');
-const LINK_MODE = (process.env.LINK_MODE || (CSV_MODE === 'tsv' ? 'plain' : 'formula')).toLowerCase(); // plain | formula
+const CSV_MODE  = (process.env.CSV_MODE  || 'excel').toLowerCase(); // excel|sheets|tsv
+const LINK_MODE = (process.env.LINK_MODE || (CSV_MODE === 'tsv' ? 'plain' : 'formula')).toLowerCase(); // formula|plain
 
 const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
 const ensurePng = (n) => (String(n).endsWith('.png') ? n : `${n}.png`);
 
-// Escapado de celdas (CSV/TSV)
 const clean = (txt = '') =>
-  String(txt)
-    .replace(/\r?\n|\r/g, ' ')
-    .replace(/\t/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/"/g, '""')
-    .trim();
+  String(txt).replace(/\r?\n|\r/g,' ').replace(/\t/g,' ').replace(/\s{2,}/g,' ').replace(/"/g,'""').trim();
 
-const q = (val) => `"${clean(val)}"`;
+const CSV_SEP = CSV_MODE === 'tsv' ? '\t' : (CSV_MODE === 'sheets' ? ',' : ';');
+const q = (val) => `"${String(val ?? '').replace(/"/g,'""')}"`;
+const qOrCell = (val) => { const s=String(val??''); if(s.startsWith('=HYPERLINK(')) return s; if (LINK_MODE==='plain' && /^https?:\/\//i.test(s)) return s; return q(s); };
 
-// No encerrar fórmulas ni URLs planas
-const qOrCell = (val) => {
-  const s = String(val ?? '');
-  if (s.startsWith('=HYPERLINK(')) return s;
-  if (LINK_MODE === 'plain' && /^https?:\/\//i.test(s)) return s;
-  return q(s);
-};
-
-// Contar columnas (debug)
-function countCsvCols(line, sep = CSV_SEP) {
-  if (sep === '\t') return line.split('\t').length;
-  let inQuotes = false, parenDepth = 0, cols = 1;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { i++; continue; }
-      inQuotes = !inQuotes; continue;
-    }
-    if (!inQuotes) {
-      if (ch === '(') { parenDepth++; continue; }
-      if (ch === ')') { if (parenDepth > 0) parenDepth--; continue; }
-      if (ch === sep && parenDepth === 0) cols++;
-    }
-  }
-  return cols;
-}
-
-const asPlainUrl = (url) => { try { return decodeURI(String(url)); } catch { return String(url); } };
 const enc = (s) => (/%[0-9A-Fa-f]{2}/.test(String(s)) ? String(s) : encodeURIComponent(String(s)));
+const asPlainUrl = (url) => { try { return decodeURI(String(url)); } catch { return String(url); } };
 
-// Link según modo
-const makeLink = (url, label) => {
+const makeHyperlink = (url, label) => {
   if (!url) return '';
-  if (LINK_MODE === 'plain') return asPlainUrl(url);
-  return CSV_MODE === 'sheets'
-    ? `=HYPERLINK("${url}","${label}")`
-    : `=HYPERLINK("${url}";"${label}")`;
+  return CSV_MODE === 'sheets' ? `=HYPERLINK("${url}","${label}")` : `=HYPERLINK("${url}";"${label}")`;
 };
+const makeLink = (url, label) => { if(!url) return ''; if (LINK_MODE==='plain') return asPlainUrl(url); return makeHyperlink(url,label); };
 
-// ==========================================
-// Helpers específicos
-// ==========================================
-
-// Tag WCAG específico (111, 131, 244, 1411, …); ignora wcag2a, wcag21aa, etc.
-function pickSpecificWcagTag(tags = []) {
-  const arr = Array.isArray(tags) ? tags.map(t => String(t).toLowerCase()) : [];
-  return arr.find(t => /^wcag\d{3,4}$/.test(t)) || ''; // 3-4 dígitos
+function getBaseDir() {
+  const SITE_SLUG = (process.env.SITE_URL || 'https://sitio-desconocido').replace(/^https?:\/\//,'').replace(/\/$/,'');
+  const FECHA = new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
+  return path.join('auditorias', `${FECHA}-${SITE_SLUG}`);
+}
+function buildScreenshotUrl(fileNamePng) {
+  if (!fileNamePng) return '';
+  if (!PUBLIC_BASE_URL || !AUDIT_DIR_NAME) return '';
+  return `${PUBLIC_BASE_URL}/auditorias/${AUDIT_DIR_NAME}/screenshots/${enc(SPEC_SUBDIR)}/${enc(fileNamePng)}`;
 }
 
-// Construye URL pública o file:// a la captura
-function buildScreenshotHref(baseNamePng) {
-  const fileName = ensurePng(baseNamePng || 'a11y');
-  const abs = path.resolve(SCREENSHOTS_DIR, SPEC_SUBDIR, fileName);
-  const prefix = PUBLIC_BASE_URL
-    ? (/\/auditorias$/.test(PUBLIC_BASE_URL) ? PUBLIC_BASE_URL : `${PUBLIC_BASE_URL}/auditorias`)
-    : null;
-
-  return prefix
-    ? `${prefix}/${enc(AUDIT_DIR_NAME)}/screenshots/${enc(SPEC_SUBDIR)}/${enc(fileName)}`
-    : `file://${abs}`;
+// — Evidencia (Playwright) para el MD —
+function buildEvidenceBlock(ruleId, selector, url, screenshotName) {
+  const safeSel = selector && selector.trim() ? selector : '[REEMPLAZA_CON_SELECTOR]';
+  const code = `// SUGERENCIA DE CÓDIGO DE CAPTURA (Playwright)
+// Cubre: ${ruleId} en ${url}
+import { test, expect } from '@playwright/test';
+test('evidencia ${ruleId}', async ({ page }) => {
+  await page.goto('${url}', { waitUntil: 'networkidle' });
+  const el = page.locator(${JSON.stringify(safeSel)});
+  await el.scrollIntoViewIfNeeded();
+  await page.evaluate((sel) => {
+    const n = document.querySelector(sel);
+    if (!n) return;
+    n.style.outline = '3px solid red';
+    n.style.outlineOffset = '2px';
+  }, ${JSON.stringify(safeSel)});
+  await el.screenshot({ path: ${JSON.stringify(screenshotName || 'evidencia.png')} });
+});`;
+  const todo = `// TODO: [Asegurar evidencia manual]
+ // Foco: selector ${safeSel}
+ // Página: ${url}
+ // Mostrar inequívocamente la condición que incumple "${ruleId}" (contraste, nombre accesible, etc.).`;
+  return { snippet: code, todo };
 }
 
-// ==========================================
-// Task factory
-// ==========================================
-function createSaveA11yResultsTask(config) {
-  return function saveA11yResults(payload = {}) {
+function appendMarkdown(mdPath, row, evidence) {
+  const lines = [];
+  lines.push(`## ${row['ID']} — ${row['Criterio WCAG'] || row['Resumen'] || row['ID']}`);
+  lines.push('');
+  lines.push(`**Página:** ${row['Páginas Afectadas']}`);
+  lines.push(`**Severidad:** ${row['Severidad']}`);
+  lines.push(`**Regla (axe):** ${row['ID'].split('-')[0]}`);
+  lines.push(`**Elemento:** \`${row['Elemento afectado']}\``);
+  lines.push(`**Criterio WCAG:** ${row['Criterio WCAG']}`);
+  if (row['Recomendación (W3C)']) lines.push(`**Guía W3C:** ${row['Recomendación (W3C)']}`);
+  if (row['Captura de pantalla']) lines.push(`**Captura:** ${row['Captura de pantalla']}`);
+  if (row['Resumen']) { lines.push(''); lines.push(`> ${row['Resumen']}`); }
+  if (row['Resultado actual']) {
+    lines.push(''); lines.push('**Snippet HTML / estado actual:**'); lines.push('```html');
+    lines.push(String(row['Resultado actual']).slice(0,4000)); lines.push('```');
+  }
+  const { snippet, todo } = evidence || {};
+  if (snippet) { lines.push(''); lines.push('**Sugerencia de código de captura (Playwright):**'); lines.push('```ts'); lines.push(snippet); lines.push('```'); }
+  else if (todo) { lines.push(''); lines.push('**TODO de captura manual:**'); lines.push('```'); lines.push(todo); lines.push('```'); }
+  lines.push('');
+  fs.appendFileSync(mdPath, lines.join('\n') + '\n', 'utf8');
+}
+
+function createSaveA11yResultsTask() {
+  const baseDir = getBaseDir();
+  const screenshotsDir = path.join(baseDir, 'screenshots', SPEC_SUBDIR);
+  ensureDir(screenshotsDir);
+
+  const CSV_NAME   = CSV_MODE === 'tsv' ? 'informe-accesibilidad.tsv' : 'informe-accesibilidad.csv';
+  const RESULT_CSV = path.join(baseDir, CSV_NAME);
+  const RESULT_MD  = path.join(baseDir, 'informe-accesibilidad.md');
+
+  if (!fs.existsSync(RESULT_CSV)) {
+    const header = [
+      'ID','Sistema operativo, navegador y tecnología asistiva','Resumen','Elemento afectado','Páginas Afectadas',
+      'Resultado actual','Resultado esperado','Metodología de testing','Severidad','Criterio WCAG',
+      'Captura de pantalla','Recomendación (W3C)','Notas',
+    ].map(q).join(CSV_SEP) + '\n';
+    fs.writeFileSync(RESULT_CSV, '\uFEFF' + header, 'utf8');
+  }
+  if (!fs.existsSync(RESULT_MD)) fs.writeFileSync(RESULT_MD, `# Informe de Accesibilidad — Evidencias\n\n`, 'utf8');
+
+  const SEVERIDAD_ES = { minor:'Leve', moderate:'Media', serious:'Alta', critical:'Crítica' };
+
+  return (payload={}) => {
     const { violations } = payload || {};
-    if (!Array.isArray(violations) || violations.length === 0) {
-      console.log('🛡️ saveA11yResults: 0 violaciones -> no se escribe fichero.');
-      return null;
-    }
-    const effective = violations.filter(v => v && typeof v === 'object' && v.id && v.id !== 'sin-violaciones');
-    if (effective.length === 0) {
-      console.log('🛡️ Sólo registros informativos/sin-violaciones -> no se escribe fichero.');
-      return null;
-    }
+    if (!Array.isArray(violations) || !violations.length) return null;
 
-    ensureDir(path.join(SCREENSHOTS_DIR, SPEC_SUBDIR));
+    violations.forEach((v, idxV) => {
+      const url           = v.url || v.nodes?.[0]?.pageUrl || '';
+      const criterionText = getWcagDisplay(v.id, v.tags || []);
+      const criterionUrl  = criterionUrlFor(v.id, v.tags || []);
+      const resumen       = clean(helpES(v.id, v.help || v.description || v.id));
+      const esperado      = clean(expectedES(v.id));
+      const severidad     = SEVERIDAD_ES[v.impact] || 'Media';
 
-    const CSV_NAME    = CSV_MODE === 'tsv' ? 'informe-accesibilidad.tsv' : 'informe-accesibilidad.csv';
-    const RESULT_FILE = path.join(BASE_DIR, CSV_NAME);
+      const nodes = Array.isArray(v.nodes) && v.nodes.length ? v.nodes : [ {} ];
+      nodes.forEach((n, idxN) => {
+        const sel    = Array.isArray(n?.target) ? n.target[0] : (n?.target || '');
+        const actual = clean(n?.html || n?.failureSummary || v.resultadoActual || 'No disponible (sin fragmento HTML)');
 
-    // Cabecera (13 columnas)
-    if (!fs.existsSync(RESULT_FILE)) {
-      const header = [
-        'ID',
-        'Sistema operativo, navegador y tecnología asistiva',
-        'Resumen',
-        'Elemento afectado',
-        'Páginas Afectadas',
-        'Resultado actual',
-        'Resultado esperado',
-        'Metodología de testing',
-        'Severidad',
-        'Criterio WCAG',
-        'Captura de pantalla',
-        'Recomendación (W3C)',
-        'Notas',
-      ].map(q).join(CSV_SEP) + '\n';
-      // BOM para Excel
-      fs.writeFileSync(RESULT_FILE, '\uFEFF' + header, 'utf8');
-    }
+        const shotFile = ensurePng(n?._screenshotName || v.screenshotName || `a11y-${Date.now()}-${idxV+1}.png`);
+        const httpHref = buildScreenshotUrl(shotFile);
+        const fileHref = `file://${path.resolve(screenshotsDir, shotFile)}`;
+        const screenshotCell = makeHyperlink(httpHref || fileHref, 'Ver captura');
 
-    const SEVERIDAD_ES = { minor: 'Leve', moderate: 'Media', serious: 'Alta', critical: 'Crítica' };
-    let wroteFirst = false;
+        const row = {
+          'ID': `${v.id}-${idxN + 1}`,
+          'Sistema operativo, navegador y tecnología asistiva': 'macOS + Electron (Cypress) + axe-core',
+          'Resumen': resumen,
+          'Elemento afectado': Array.isArray(n?.target) ? n.target.join(' ') : (n?.target || ''),
+          'Páginas Afectadas': makeLink(url, 'Ver página'),
+          'Resultado actual': actual,
+          'Resultado esperado': esperado,
+          'Metodología de testing': 'WCAG 2.1 / 2.2 AA (automatizado con axe-core)',
+          'Severidad': severidad,
+          'Criterio WCAG': criterionText || '—',
+          'Captura de pantalla': screenshotCell,
+          'Recomendación (W3C)': makeHyperlink(criterionUrl, 'Ver guía W3C'),
+          'Notas': '',
+        };
 
-    effective.forEach((v, idx) => {
-      // --- 1) WCAG concreto ---
-      const tagEspecifico = pickSpecificWcagTag(v.tags);
-      const wcag = getWcagForRule(v.id, tagEspecifico); // -> { code:'1.3.1', title:'Información y relaciones', url:'...' } | null
+        const line = [
+          row['ID'],row['Sistema operativo, navegador y tecnología asistiva'],row['Resumen'],row['Elemento afectado'],
+          row['Páginas Afectadas'],row['Resultado actual'],row['Resultado esperado'],row['Metodología de testing'],
+          row['Severidad'],row['Criterio WCAG'],row['Captura de pantalla'],row['Recomendación (W3C)'],row['Notas'],
+        ].map(qOrCell).join(CSV_SEP);
 
-      const criterioNombre = wcag ? `${wcag.code} ${wcag.title}` : 'Criterio WCAG no identificado';
-      const criterioUrl    = wcag ? wcag.url : 'https://www.w3.org/WAI/WCAG21/Understanding/overview.html';
+        fs.appendFileSync(RESULT_CSV, line + '\n', 'utf8');
 
-      // --- 2) Textos ES (Resumen / Esperado) ---
-      const resumen  = clean(v.helpES || helpES(v.id, v.help) || v.help || v.description || v.id);
-      const esperado = clean(v.resultadoEsperadoES || expectedES(v.id) || v.help || `Debe cumplir el criterio: ${criterioNombre}`);
-
-      // --- 3) Campos varios ---
-      const url       = v.url || '';
-      const elemento  = clean(v.elementoAfectado || 'No identificado');
-      const severidad = SEVERIDAD_ES[v.impact] || 'Media';
-
-      // Resultado actual
-      const actual =
-        clean(v.resultadoActualES || v.resultadoActual) ||
-        clean(v.nodes?.[0]?.html) ||
-        clean(v.nodes?.[0]?.failureSummary) ||
-        'No disponible (sin fragmento HTML)';
-
-      // --- 4) Captura: usa la que venga o constrúyela ---
-      const screenshotName = ensurePng(v.screenshotName || `a11y-${Date.now()}-${idx + 1}`);
-      const screenshotHref = buildScreenshotHref(screenshotName);
-
-      // --- 5) Celdas (con modo enlaces correcto) ---
-      const cellPagina     = makeLink(url, 'Ver página');
-      const cellScreenshot = makeLink(screenshotHref, 'Ver captura');
-      const cellGuia       = makeLink(criterioUrl, 'Ver guía W3C'); // 🔗 siempre al WCAG concreto
-
-      const fields = [
-        `${v.id}-${idx + 1}`,
-        'macOS + Electron (Cypress) + axe-core',
-        resumen,
-        elemento,
-        cellPagina,
-        actual,
-        esperado,
-        'WCAG 2.1 / 2.2 AA (automatizado con axe-core)',
-        severidad,
-        criterioNombre,   // p. ej., "1.3.1 Información y relaciones"
-        cellScreenshot,
-        cellGuia,         // 🔗 criterio WCAG
-        '',
-      ];
-
-      const line = fields.map(qOrCell).join(CSV_SEP);
-      fs.appendFileSync(RESULT_FILE, line + '\n', 'utf8');
-
-      if (!wroteFirst) {
-        const cols = countCsvCols(line, CSV_SEP);
-        console.log(`🧪 Primera fila: ${cols} columnas (esperadas 13) — modo=${CSV_MODE}, links=${LINK_MODE}`);
-        wroteFirst = true;
-      }
+        const evidence = buildEvidenceBlock(v.id, sel, url, shotFile);
+        appendMarkdown(RESULT_MD, row, evidence);
+      });
     });
 
-    console.log(`📊 ${effective.length} violaciones registradas en ${path.join(BASE_DIR, CSV_NAME)}`);
+    console.log(`📊 Informe actualizado: ${RESULT_CSV}`);
+    console.log(`📝 Evidencias MD: ${path.join(getBaseDir(), 'informe-accesibilidad.md')}`);
     return null;
   };
 }
 
 module.exports = { createSaveA11yResultsTask };
+
+
+
+
+
+
 
 
 

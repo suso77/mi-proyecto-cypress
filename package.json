@@ -6,40 +6,40 @@
   "type": "commonjs",
   "scripts": {
     "test:a11y:smoke": "cypress run --browser electron --headless --spec cypress/e2e/smoke.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000",
-    "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --spec \"cypress/e2e/*{accesibilidad-sitemap,a11y-flujos}.cy.js\"",
+    "test:evidencias": "SITE_URL=$SITE_URL cypress run --browser chrome",
     "test:a11y:flujos": "cross-env CYPRESS_baseUrl=https://www.hiexperience.es cypress run --browser electron --headless --spec cypress/e2e/a11y-flujos.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000,video=false",
     "test:a11y:flujos:site": "cross-env CYPRESS_baseUrl=$SITE_URL cypress run --browser electron --headless --spec cypress/e2e/a11y-flujos.cy.js --config pageLoadTimeout=120000,defaultCommandTimeout=15000,video=false",
     "auditoria:sheets:plain": "cross-env CSV_MODE=sheets LINK_MODE=plain PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
-
+    "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
+    "test:evidencias:open": "cypress open",
+    "a11y:chrome": "SITE_URL=$SITE_URL cypress run --browser chrome",
+    "a11y:firefox": "SITE_URL=$SITE_URL cypress run --browser firefox",
+    "a11y:webkit": "SITE_URL=$SITE_URL cypress run --browser electron",
+    "a11y:all": "npm run a11y:chrome && npm run a11y:firefox",
+    "a11y:post": "node scripts/postprocess-informe.js",
+    "publish:artifacts:s3": "bash scripts/ci-export-artifacts-s3.sh",
     "// --------- EJECUCIONES BASE ---------": "====================",
     "auditoria": "cross-env PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file": "cross-env FORCE_FILE_LINKS=1 npm run test:evidencias",
-
     "// --------- EXCEL (;) ---------": "====================",
     "auditoria:excel": "cross-env CSV_MODE=excel LINK_MODE=formula PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file:excel": "cross-env CSV_MODE=excel LINK_MODE=formula FORCE_FILE_LINKS=1 npm run test:evidencias",
-
     "// --------- SHEETS/NUMBERS (,) ---------": "====================",
     "auditoria:sheets": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file:sheets": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:sheets:local": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
     "auditoria:sheets:local:plain": "cross-env CSV_MODE=sheets LINK_MODE=plain PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
-
     "// --------- TSV (máxima estabilidad) ---------": "====================",
     "auditoria:tsv:local": "cross-env CSV_MODE=tsv LINK_MODE=plain PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
     "auditoria:tsv:public": "cross-env CSV_MODE=tsv LINK_MODE=plain PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
-
     "// --------- UTILIDADES ---------": "====================",
     "auditoria:clean": "cross-env SITE_URL=https://www.hiexperience.es cypress run --spec \"cypress/e2e/clean.cy.js\"",
     "serve:auditorias": "http-server -p 8080 -c-1 .",
     "deploy:surge": "surge ./ --domain $SURGE_DOMAIN",
     "auditoria:sheets:surge": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=$SURGE_PUBLIC_BASE npm run test:evidencias",
     "abrir:cypress": "cypress open",
-
     "postprocess:informe": "node scripts/postprocess-informe.js",
     "abrir:informe": "node scripts/abrir-informe.js",
-
-    "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
     "posttest:evidencias": "node scripts/postprocess-informe.js && node scripts/abrir-informe.js || true"
   },
   "keywords": [
@@ -58,6 +58,7 @@
     "cross-env": "^10.1.0",
     "cypress": "^15.5.0",
     "cypress-axe": "^1.7.0",
+    "dotenv": "^17.2.3",
     "http-server": "^14.1.1",
     "papaparse": "^5.4.1",
     "surge": "^0.23.1",
