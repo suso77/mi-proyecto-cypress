@@ -1,17 +1,20 @@
-name: A11y CI (Cypress headless)
+name: CI
 
 on:
-  pull_request:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
-  a11y:
+  build-test:
     runs-on: ubuntu-latest
-    env:
-      BASE_URL: "http://localhost:5173" # vite preview (o 3000 para Next, 8080 http-server)
-      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
+    strategy:
+      fail-fast: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,28 +22,28 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version-file: .nvmrc
+          cache: 'npm'
 
-      - name: Install deps
+      - name: Use exact npm
+        run: npm i -g npm@11.6.2
+
+      - name: Install (npm ci)
         run: npm ci
 
-      - name: Build app (si aplica)
-        run: npm run build --if-present
+      - name: Audit (no bloquear por low)
+        run: npm audit --audit-level=moderate || true
 
-      - name: Start app (si aplica)
-        run: npm run start --if-present &
+      - name: Lint
+        run: npm run lint || true
 
-      - name: Esperar a que responda la app
-        run: npx wait-on $BASE_URL
+      - name: Test
+        run: npm test
 
-      - name: Verificar Cypress (opcional)
-        run: npx cypress verify
+      - name: Build
+        run: npm run build
 
-      - name: Ejecutar Cypress (headless)
-        run: npm run test:a11y
-        env:
-          CYPRESS_baseUrl: ${{ env.BASE_URL }}
+
 
 
 

@@ -1,27 +1,25 @@
 /// <reference types="cypress" />
 
 describe('Smoke', () => {
-  it('abre la home y no hay errores JS (permitimos warnings)', () => {
-    const errors = [];
+  // Capturamos errores/warnings de consola ANTES de cargar la página
+  beforeEach(() => {
     cy.on('window:before:load', (win) => {
-      const origError = win.console.error;
-      // intercepta console.error
-      win.console.error = (...args) => {
-        errors.push(args.join(' '));
-        if (origError) origError.apply(win.console, args);
-      };
-    });
-
-    cy.visit(Cypress.env('SITE_URL') || '/', { failOnStatusCode: false, timeout: 120000 });
-    cy.document().its('readyState').should('eq', 'complete');
-    cy.get('body').should('be.visible');
-
-    // Aquí SÍ: no debe haber errores
-    cy.then(() => {
-      // Permite filtrar mensajes si quieres ignorar libs de terceros:
-      const relevantes = errors.filter((m) => !/weglot|3rdparty|deprecation/i.test(m));
-      expect(relevantes.join('\n'), 'console.error vacío en smoke').to.eq('');
+      cy.stub(win.console, 'error').as('consoleError');
+      cy.stub(win.console, 'warn').as('consoleWarn');
     });
   });
+
+  it('abre la home sin errores JS', () => {
+    cy.visit('/');                // Usa CYPRESS_baseUrl definido en CI
+    cy.contains('body', /./);     // Sanity check mínimo (la página renderiza algo)
+
+    // Asegura que no hubo errores ni warnings en consola
+    cy.get('@consoleError').should('not.be.called');
+    cy.get('@consoleWarn').should('not.be.called');
+
+    // (Opcional) Validación rápida extra
+    cy.title().should('be.a', 'string').and('not.be.empty');
+  });
 });
+
 
