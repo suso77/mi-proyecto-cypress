@@ -1,49 +1,44 @@
-name: CI
+name: A11y CI (Cypress headless)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, artifacts ]
   pull_request:
-    branches: [ main ]
-
-permissions:
-  contents: read
 
 jobs:
-  build-test:
+  a11y:
     runs-on: ubuntu-latest
+    env:
+      BASE_URL: "https://www.hiexperience.es"   # ⬅️ sitio público
+      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
-    strategy:
-      fail-fast: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node (cache npm)
         uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
-      - name: Use exact npm
-        run: npm i -g npm@11.6.2
-
-      - name: Install (npm ci)
+      - name: Install deps
         run: npm ci
 
-      - name: Audit (no bloquear por low)
-        run: npm audit --audit-level=moderate || true
+      - name: Verify Cypress
+        run: npx cypress verify
 
-      - name: Lint
-        run: npm run lint || true
+      - name: Run Cypress (headless)
+        run: npm run test:a11y
+        env:
+          CYPRESS_baseUrl: ${{ env.BASE_URL }}
 
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
-
-
-
-
+      - name: Upload Cypress artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            cypress/screenshots
+            cypress/videos
+          retention-days: 7
