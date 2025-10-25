@@ -1,24 +1,22 @@
 name: A11y CI (Cypress headless)
 
 on:
-  push:
-    branches: [ main, artifacts ]
   pull_request:
+  push:
+    branches: [ main ]
 
 jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: "https://www.hiexperience.es"
+      BASE_URL: "http://localhost:5173" # vite preview (o 3000 para Next, 8080 http-server)
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
-      CSV_MODE: "sheets"
-      LINK_MODE: "plain"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node (cache npm)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -27,219 +25,22 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Verify Cypress
+      - name: Build app (si aplica)
+        run: npm run build --if-present
+
+      - name: Start app (si aplica)
+        run: npm run start --if-present &
+
+      - name: Esperar a que responda la app
+        run: npx wait-on $BASE_URL
+
+      - name: Verificar Cypress (opcional)
         run: npx cypress verify
 
-      # ----- Ejecuta tus pruebas -----
-      - name: Run Cypress (smoke only, electron)
-        run: npm run test:a11y:flujos
+      - name: Ejecutar Cypress (headless)
+        run: npm run test:a11y
         env:
           CYPRESS_baseUrl: ${{ env.BASE_URL }}
 
-      # (Opcional) Ejecutar auditoría completa
-      # - name: Run Full Audit (sitemap + flujos)
-      #   run: npm run auditoria:sheets:plain
 
-      # ---- Carpeta de auditoría: DD-MM-YYYY-<host> ----
-      - name: Compute audit dir
-        run: |
-          DATE="$(TZ=Europe/Madrid date +'%d-%m-%Y')"
-          SITE="$(node -e "console.log(new URL(process.env.BASE_URL).hostname.replace(/^www\./,''))")"
-          echo "AUDIT_DIR_NAME=${DATE}-${SITE}" >> "$GITHUB_ENV"
-          echo "📁 auditorias/${DATE}-${SITE}"
 
-      - name: Normalize audit folder (optional)
-        run: |
-          set -eux
-          mkdir -p "auditorias/${AUDIT_DIR_NAME}"
-          UNKNOWN="$(ls -d auditorias/*-sitio-desconocido 2>/dev/null || true)"
-          if [ -n "$UNKNOWN" ]; then
-            echo "🔁 Renombrando $UNKNOWN -> auditorias/${AUDIT_DIR_NAME}"
-            shopt -s dotglob nullglob
-            mv "$UNKNOWN"/* "auditorias/${AUDIT_DIR_NAME}/" || true
-            rmdir "$UNKNOWN" || true
-          fi
-          if [ ! -f "auditorias/${AUDIT_DIR_NAME}/README.txt" ]; then
-            cat > "auditorias/${AUDIT_DIR_NAME}/README.txt" <<TXT
-Auditoría A11y
-- Fecha: ${AUDIT_DIR_NAME%%-*}
-- Sitio: ${AUDIT_DIR_NAME#*-}
-- Base URL: ${BASE_URL}
-Generado por CI.
-TXT
-          fi
-
-      # ---- Subir artifacts completos ----
-      - name: Upload A11y bundle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: auditorias-${{ env.AUDIT_DIR_NAME }}
-          path: |
-            auditorias/${{ env.AUDIT_DIR_NAME }}/**
-          retention-days: 30
-          if-no-files-found: error
-
-      # ---- Subir “dedupe/resumen” si existen ----
-      - name: Upload deduped reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: a11y-dedup-${{ env.AUDIT_DIR_NAME }}
-          path: |
-            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*dedup*.csv
-            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*dedup*.tsv
-            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*-resumen*.csv
-            auditorias/${{ env.AUDIT_DIR_NAME }}/**/*-resumen*.tsv
-          retention-days: 30
-          if-no-files-found: ignore
-
-      # ---- Legacy paths por compatibilidad ----
-      - name: Upload legacy Cypress folders
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cypress-legacy
-          path: |
-            cypress/screenshots/**
-            cypress/videos/**
-          retention-days: 7
-          if-no-files-found: ignore
-
-      # ---- Comentar en PR con resumen + links a artifacts ----
-      - name: Comment on PR with summary and artifacts link
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const auditDir = path.join(process.cwd(), 'auditorias', process.env.AUDIT_DIR_NAME);
-            const auditName = `auditorias-${process.env.AUDIT_DIR_NAME}`;
-            const dedupName = `a11y-dedup-${process.env.AUDIT_DIR_NAME}`;
-
-            // Utilidades simples
-            const walk = (dir) => {
-              let out = [];
-              for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-                const p = path.join(dir, e.name);
-                if (e.isDirectory()) out = out.concat(walk(p));
-                else out.push(p);
-              }
-              return out;
-            };
-
-            const findSummaryFile = () => {
-              try {
-                const files = walk(auditDir);
-                // Prioriza "*-resumen*.tsv/csv" y si no, cualquier "dedup"
-                const prefer = files.filter(f => /-resumen.*\.(csv|tsv)$/i.test(f));
-                const fallback = files.filter(f => /dedup.*\.(csv|tsv)$/i.test(f));
-                return prefer[0] || fallback[0] || null;
-              } catch {
-                return null;
-              }
-            };
-
-            const stripQuotes = (s) => (s || '').replace(/^"+|"+$/g, '').trim();
-
-            const parseTwoColumn = (raw) => {
-              // Detección burda del delimitador: TSV > CSV
-              const isTSV = raw.includes('\t');
-              const sep = isTSV ? '\t' : ',';
-              const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-
-              // Esperamos bloques tipo:
-              // "Resumen","Valor"
-              // "Total violaciones (deduped)","123"
-              // ...
-              // "Por severidad","Total"
-              // "critical","10"
-              // ...
-              const pairs = lines.map(l => {
-                // quita comillas externas básicas y separa
-                // OJO: el resumen que generamos no mete comas en la primera columna
-                const parts = isTSV ? l.split('\t') : l.split(',');
-                return parts.map(stripQuotes);
-              });
-
-              const summary = { totals: {}, bySeverity: {}, byWcag: {} };
-
-              // Extrae bloques por títulos conocidos
-              let section = null;
-              for (const [a, b] of pairs) {
-                if (!a) continue;
-                if (/^resumen$/i.test(a) && /valor/i.test(b)) {
-                  section = 'head'; continue;
-                }
-                if (/^por severidad$/i.test(a)) { section = 'sev'; continue; }
-                if (/^por wcag$/i.test(a)) { section = 'wcag'; continue; }
-
-                if (section === 'head' && /total.*deduped/i.test(a)) {
-                  summary.totals.count = b;
-                } else if (section === 'sev' && a && b) {
-                  summary.bySeverity[a] = b;
-                } else if (section === 'wcag' && a && b) {
-                  summary.byWcag[a] = b;
-                }
-              }
-              return summary;
-            };
-
-            let summaryText = '';
-            const sumFile = findSummaryFile();
-            if (sumFile && fs.existsSync(sumFile)) {
-              try {
-                const raw = fs.readFileSync(sumFile, 'utf8');
-                const s = parseTwoColumn(raw);
-
-                // Formatea tablas en Markdown
-                const sevRows = Object.entries(s.bySeverity || {}).map(([k,v]) => `| ${k} | ${v} |`).join('\n') || '| (sin datos) | |';
-                const wcagRows = Object.entries(s.byWcag || {})
-                  .sort((a,b) => a[0].localeCompare(b[0], 'en', { numeric: true }))
-                  .map(([k,v]) => `| ${k} | ${v} |`).join('\n') || '| (sin datos) | |';
-
-                summaryText = [
-                  `**Total (deduped)**: ${s.totals?.count ?? '—'}`,
-                  '',
-                  '**Por severidad**',
-                  '| Severidad | Total |',
-                  '|---|---:|',
-                  sevRows,
-                  '',
-                  '**Por WCAG**',
-                  '| WCAG | Total |',
-                  '|---|---:|',
-                  wcagRows
-                ].join('\n');
-              } catch (e) {
-                summaryText = `_No se pudo parsear el resumen (${e.message})._`;
-              }
-            } else {
-              summaryText = '_No se encontró archivo de resumen (dedupe/resumen)._';
-            }
-
-            const lines = [];
-            lines.push(`### ♿ A11y CI – Evidencias`);
-            lines.push(`**Base URL:** ${process.env.BASE_URL}`);
-            lines.push(`**Carpeta:** \`auditorias/${process.env.AUDIT_DIR_NAME}\``);
-            lines.push('');
-            lines.push('#### Resumen (deduped)');
-            lines.push(summaryText);
-            lines.push('');
-            lines.push(`**Artifacts**`);
-            lines.push(`- 📦 Carpeta completa: **${auditName}**`);
-            lines.push(`- 🧹 Dedup/resumen: **${dedupName}** (si existe)`);
-            lines.push(`- 🔗 Ver artifacts del run: [Actions → artifacts](${runUrl})`);
-            lines.push('');
-            lines.push(`> El informe usa \`LINK_MODE=plain\` para URLs en texto plano.`);
-
-            const body = lines.join('\n');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body
-            });
