@@ -25,20 +25,16 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install deps (npm ci)
+      - name: Install deps
         run: npm ci
 
-      - name: Install Cypress binary
-        run: npx cypress install
-
-      - name: Verify Cypress
-        run: npx cypress verify
-
-      - name: Limpiar informe anterior
-        run: npm run auditoria:clean
-
-      - name: Ejecutar auditoría
-        run: npm run auditoria
+      - name: Run Cypress (Chrome)
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          runTests: true
+          command: npm run auditoria:chrome
+          browser: chrome
 
       - name: Subir artefactos
         if: always()
