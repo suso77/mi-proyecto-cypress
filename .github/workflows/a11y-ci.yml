@@ -1,71 +1,63 @@
-name: A11y CI (Cypress headless)
+name: Auditoría A11Y (Cypress + axe-core)
 
 on:
-  pull_request:
   push:
     branches: [ main ]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   a11y:
     runs-on: ubuntu-latest
+
     env:
-      # 👉 Ajusta BASE_URL según tu proyecto:
-      BASE_URL: "http://localhost:5173" # vite preview (cámbialo si usas otra cosa)
-      # BASE_URL: "http://localhost:3000"   # Next.js
-      # BASE_URL: "http://localhost:8080"   # http-server sobre /dist
+      # Usa tu target público (no bloqueamos si no responde)
+      BASE_URL: "https://www.hiexperience.es"
+      # Para cachear el binario de Cypress
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
+      # Variables que ya usas en los npm scripts
+      SITE_URL: "https://www.hiexperience.es"
+      PUBLIC_BASE_URL: "https://www.hiexperience.es"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node 20.x (obligatorio)
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      # Cache del binario de Cypress para acelerar runs
-      - name: Cache Cypress binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/Cypress
-          key: cypress-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            cypress-cache-${{ runner.os }}-
-
-      - name: Install deps
+      - name: Instalar dependencias (incluye devDependencies)
         run: npm ci
 
-      - name: Build app (si aplica)
-        run: npm run build --if-present
+      # Asegura el binario de Cypress en el runner
+      - name: Instalar binario de Cypress
+        run: npx cypress install
 
-      - name: Start app (si aplica)
-        run: npm run start --if-present &
-
-      # ⛔️ quitamos wait-on (se cuelga con sitios públicos) y
-      # ✅ usamos un ping no bloqueante con curl
-      - name: Smoke ping a BASE_URL (no bloqueante)
-        if: ${{ startsWith(env.BASE_URL, 'http') }}
-        run: |
-          echo "Probando disponibilidad de $BASE_URL (no bloquea si falla)…"
-          curl -I -L --retry 3 --retry-delay 2 --retry-all-errors --max-time 15 "$BASE_URL" || true
-
-      - name: Verificar Cypress (opcional)
+      - name: Verificar Cypress
         run: npx cypress verify
 
-      - name: Ejecutar Cypress (headless)
-        run: npm run test:a11y
-        env:
-          CYPRESS_baseUrl: ${{ env.BASE_URL }}
+      # Ping no bloqueante a la URL pública (evita bloqueos de wait-on)
+      - name: Smoke ping a BASE_URL (no bloqueante)
+        run: |
+          echo "Probando disponibilidad de $BASE_URL…"
+          curl -I -L --retry 3 --retry-delay 2 --retry-all-errors --max-time 15 "$BASE_URL" || true
 
-      # Publicación de artefactos la haremos en la siguiente tarea
-      # - name: Subir screenshots/videos (opcional ahora)
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: cypress-artifacts
-      #     path: |
-      #       cypress/screenshots
-      #       cypress/videos
-      #     retention-days: 7
+      # 1) Limpieza de informe previo (tu script usa cross-env internamente)
+      - name: Limpiar informe anterior
+        run: npm run auditoria:clean
+
+      # 2) Auditoría principal (sitemap + discovery)
+      - name: Ejecutar auditoría A11Y (mapa del sitio + descubrimiento)
+        run: npm run auditoria
+
+      # Artefactos: sube toda la carpeta auditorias/ generada por tu config
+      - name: Subir artefactos de auditoría
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auditorias
+          path: auditorias/
+          retention-days: 14
