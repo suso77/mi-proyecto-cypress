@@ -1,11 +1,12 @@
 // cypress.config.cjs
+// Cypress 15 + Node 20 (fetch nativo). Sustituye axios/https por fetch + undici.
+
 const { defineConfig } = require('cypress');
 const fs   = require('fs');
 const path = require('path');
-const axios = require('axios');
-const https = require('https');
 const crypto = require('crypto');
 const { parseStringPromise } = require('xml2js');
+const { Agent } = require('undici'); // agente opcional para TLS laxo
 
 // ====== Helpers ======
 const hash8 = (s) => crypto.createHash('md5').update(String(s || '')).digest('hex').slice(0, 8);
@@ -133,11 +134,28 @@ async function fetchSitemapUrls(opts = {}) {
   const includeOk = (u) => incPatterns.length === 0 || incPatterns.some(r => r.test(u));
   const excludeOk = (u) => excPatterns.length === 0 || !excPatterns.some(r => r.test(u));
 
-  const agent = new https.Agent({ rejectUnauthorized: false });
+  // Agente "inseguro" opcional solo si A11Y_INSECURE_SSL=1 (certificados legacy)
+  const insecureDispatcher = new Agent({ connect: { rejectUnauthorized: false } });
 
-  async function fetchXml(url) {
-    const res = await axios.get(url, { httpsAgent: agent, timeout: 20000 });
-    return res.data;
+  async function fetchXml(url, { timeoutMs = 20000 } = {}) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        dispatcher: process.env.A11Y_INSECURE_SSL === '1' ? insecureDispatcher : undefined,
+        headers: {
+          'User-Agent': 'cypress-a11y-audit/1.0',
+          'Accept': 'application/xml,text/xml;q=0.9,*/*;q=0.8',
+        },
+        redirect: 'follow',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      return await res.text();
+    } finally {
+      clearTimeout(t);
+    }
   }
 
   async function parseXml(xml) {
@@ -203,7 +221,6 @@ async function fetchSitemapUrls(opts = {}) {
 
 /* ============== TEXTO EN ESPAÑOL (Resultado actual) ============== */
 const RULE_ES = {
-  // fallback de alta prioridad solo para algunas reglas clave si falla i18n
   'landmark-unique': 'Los landmarks deben tener una combinación única de rol y nombre accesible.',
   'heading-order'  : 'Los niveles de encabezado deben aumentar de uno en uno, sin saltos.',
   'color-contrast' : 'El texto no alcanza el contraste mínimo requerido.',
@@ -215,13 +232,9 @@ const RULE_ES = {
 };
 
 function buildResultadoActualES(v) {
-  // 1) Preferimos i18n curado
   const fromI18n = AXE_I18N[v.id]?.resumen;
-  // 2) Plantillas por patrón (cubre “todas”)
   const fromTemplate = makeEsForRule ? makeEsForRule(v.id, v.help || v.description) : null;
-  // 3) Fallback local
   const fromLocal = RULE_ES[v.id];
-  // 4) Último recurso: traducir help EN→ES
   const fromAuto  = autoTranslateEnToEs ? autoTranslateEnToEs(v.help || v.description || '') : '';
 
   const baseES = clean(
@@ -288,7 +301,6 @@ function saveA11yResults(payload = {}) {
   let wroteFirst = false;
 
   effective.forEach((v, idx) => {
-    // Criterio + enlace (si hay mapas)
     let criterio = v.criterio || null;
     let enlace   = v.enlace   || null;
     if (!criterio || !enlace) {
@@ -320,10 +332,11 @@ function saveA11yResults(payload = {}) {
 
     const resultadoActualES = buildResultadoActualES(v);
 
-    const severidad = SEVERIDAD_ES[v.impact] || 'Media';
+    const SEVERIDAD_MAP = { minor: 'Leve', moderate: 'Media', serious: 'Alta', critical: 'Crítica' };
+    const severidad = SEVERIDAD_MAP[v.impact] || 'Media';
+
     const screenshotName = ensurePng(v.screenshotName || `a11y-${Date.now()}-${idx + 1}`);
 
-    // Prefijo público (si lo hay) sin duplicar /auditorias
     const prefix = (!forceFile && publicBase)
       ? (/\/auditorias$/.test(publicBase) ? publicBase : `${publicBase}/auditorias`)
       : null;
@@ -336,14 +349,12 @@ function saveA11yResults(payload = {}) {
     const cellPagina     = LINK_MODE === 'formula' ? (CSV_MODE === 'sheets'
       ? `=HYPERLINK("${v.url || ''}","Abrir")` : `=HYPERLINK("${v.url || ''}";"Abrir")`) : asPlainUrl(v.url || '');
 
-    // *** SIEMPRE enlace corto "Ver Captura" ***
     const cellScreenshot = makeHyperlink(screenshotHref, 'Ver Captura');
 
     const cellGuia       = LINK_MODE === 'formula'
       ? (CSV_MODE === 'sheets' ? `=HYPERLINK("${enlace}","Ver guía")` : `=HYPERLINK("${enlace}";"Ver guía")`)
       : asPlainUrl(enlace);
 
-    // ID visible: ocultar hash de selector vacío (-d41d8cd9)
     const urlHash = hash8(v.url || '');
     const selHash = hash8(v.selector || '');
     const internalId = `${v.id}-${urlHash}-${selHash}`;
@@ -449,22 +460,3 @@ module.exports = defineConfig({
   fixturesFolder: 'cypress/fixtures',
   downloadsFolder: 'cypress/downloads',
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
