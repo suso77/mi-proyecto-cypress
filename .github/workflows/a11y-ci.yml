@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 name: a11y
 
 on:
@@ -5,27 +6,47 @@ on:
   push:
     branches: [ main, master, principal ]
   pull_request:
+=======
+name: Auditoría A11Y (Cypress + axe-core)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+>>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
 
 jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
+<<<<<<< HEAD
       SITE_URL: https://www.hiexperience.es
       LC_ALL: C.UTF-8
       LANG: C.UTF-8
       # guarda la caché de binarios de Cypress en el workspace (evita permisos raros)
+=======
+      BASE_URL: "https://www.hiexperience.es"
+>>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
+      SITE_URL: "https://www.hiexperience.es"
+      PUBLIC_BASE_URL: "https://www.hiexperience.es"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+<<<<<<< HEAD
       - name: Setup Node (LTS)
+=======
+      - name: Setup Node 20.x (obligatorio)
+>>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
+<<<<<<< HEAD
       # Asegura devDependencies
       - name: Install dependencies (dev)
         run: npm ci --include=dev
@@ -57,3 +78,32 @@ jobs:
             cypress/screenshots/**
             auditorias/**/*
           retention-days: 7
+=======
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar binario de Cypress
+        run: npx cypress install
+
+      - name: Verificar Cypress
+        run: npx cypress verify
+
+      - name: Smoke ping a BASE_URL (no bloqueante)
+        run: |
+          echo "Probando disponibilidad de $BASE_URL…"
+          curl -I -L --retry 3 --retry-delay 2 --retry-all-errors --max-time 15 "$BASE_URL" || true
+
+      - name: Limpiar informe anterior
+        run: npm run auditoria:clean
+
+      - name: Ejecutar auditoría A11Y (mapa del sitio + descubrimiento)
+        run: npm run auditoria
+
+      - name: Subir artefactos de auditoría
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auditorias
+          path: auditorias/
+          retention-days: 14
+>>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
