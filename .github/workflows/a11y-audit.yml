@@ -1,10 +1,10 @@
 name: a11y
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main, master, principal ]
+    branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   a11y:
@@ -13,6 +13,7 @@ jobs:
       SITE_URL: https://www.hiexperience.es
       LC_ALL: C.UTF-8
       LANG: C.UTF-8
+      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
     steps:
       - uses: actions/checkout@v4
@@ -22,22 +23,25 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # La action hará: npm ci, instalar Cypress y ejecutar tu comando
-      - name: Cypress run (usa tu script)
-        uses: cypress-io/github-action@v6
-        with:
-          install-command: npm ci
-          command: npm run test:evidencias
-          # Si quieres limitar URLs:
-          # env: A11Y_MAX_URLS=100
+      - name: Install deps
+        run: npm ci
 
-      - name: Upload artifacts
+      - name: Install Cypress binary
+        run: npx cypress install
+
+      - name: Verify Cypress
+        run: npx cypress verify
+
+      - name: Limpiar informe anterior
+        run: npm run auditoria:clean
+
+      - name: Ejecutar auditoría
+        run: npm run auditoria
+
+      - name: Subir artefactos
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: audit-artifacts
-          path: |
-            cypress/videos/**
-            cypress/screenshots/**
-            auditorias/**/*
-          retention-days: 7
+          name: auditorias
+          path: auditorias/
+          retention-days: 14
