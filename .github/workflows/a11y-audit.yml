@@ -36,6 +36,13 @@ jobs:
           command: npm run auditoria:chrome
           browser: chrome
 
+      # ⬇️ Quality Gate: falla el job si supera umbrales
+      - name: Quality Gate (critical≤0, serious≤10)
+        env:
+          A11Y_MAX_CRITICAL: "0"
+          A11Y_MAX_SERIOUS:  "10"
+        run: npm run quality:gate
+
       - name: Subir artefactos
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,4 +54,3 @@ jobs:
             cypress/videos/**
           if-no-files-found: ignore
           retention-days: 7
-

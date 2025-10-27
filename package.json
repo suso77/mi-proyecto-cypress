@@ -6,6 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "quality:gate": "node scripts/quality-gate.js",
     "test:evidencias:chrome": "cross-env SITE_URL=https://www.hiexperience.es npx cypress run --browser chrome --headless --config-file cypress.config.cjs --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
     "auditoria:chrome": "cross-env PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias:chrome",
     "// --------- PRE/POST ---------": "====================",
