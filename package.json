@@ -1,36 +1,31 @@
 {
   "scripts": {
     "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
-
     "// --------- EJECUCIONES BASE ---------": "====================",
     "auditoria": "cross-env PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file": "cross-env FORCE_FILE_LINKS=1 npm run test:evidencias",
-
     "// --------- EXCEL (;) ---------": "====================",
     "auditoria:excel": "cross-env CSV_MODE=excel LINK_MODE=formula PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file:excel": "cross-env CSV_MODE=excel LINK_MODE=formula FORCE_FILE_LINKS=1 npm run test:evidencias",
-
     "// --------- SHEETS/NUMBERS (,) ---------": "====================",
     "auditoria:sheets": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file:sheets": "cross-env CSV_MODE=sheets LINK_MODE=formula FORCE_FILE_LINKS=1 npm run test:evidencias",
     "auditoria:sheets:local": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
     "auditoria:sheets:local:plain": "cross-env CSV_MODE=sheets LINK_MODE=plain PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
-
     "// --------- TSV (máxima estabilidad en Sheets/Numbers) ---------": "====================",
     "auditoria:tsv:local": "cross-env CSV_MODE=tsv LINK_MODE=plain PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
     "auditoria:tsv:public": "cross-env CSV_MODE=tsv LINK_MODE=plain PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
-
     "// --------- UTILIDADES ---------": "====================",
     "auditoria:clean": "cross-env SITE_URL=https://www.hiexperience.es cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/clean.cy.js\"",
     "serve:auditorias": "http-server -p 8080 -c-1 .",
     "deploy:surge": "surge ./ --domain $SURGE_DOMAIN",
     "auditoria:sheets:surge": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=$SURGE_PUBLIC_BASE npm run test:evidencias",
     "abrir:cypress": "cypress open --config-file cypress.config.cjs",
-
     "abrir:informe": "node scripts/abrir-informe.js",
-
     "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
     "posttest:evidencias": "node scripts/abrir-informe.js || true"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0"
   }
 }
-
