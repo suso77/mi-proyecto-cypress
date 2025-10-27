@@ -1,63 +1,47 @@
-name: Auditoría A11Y (Cypress + axe-core)
+name: a11y
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
   workflow_dispatch:
+  push:
+    branches: [ main, master, principal ]
+  pull_request:
 
 jobs:
   a11y:
     runs-on: ubuntu-latest
-
     env:
-      # Usa tu target público (no bloqueamos si no responde)
-      BASE_URL: "https://www.hiexperience.es"
-      # Para cachear el binario de Cypress
-      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
-      # Variables que ya usas en los npm scripts
-      SITE_URL: "https://www.hiexperience.es"
-      PUBLIC_BASE_URL: "https://www.hiexperience.es"
+      SITE_URL: https://www.hiexperience.es
+      LC_ALL: C.UTF-8
+      LANG: C.UTF-8
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node 20.x (obligatorio)
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
-      - name: Instalar dependencias (incluye devDependencies)
+      - name: Install dependencies
         run: npm ci
 
-      # Asegura el binario de Cypress en el runner
-      - name: Instalar binario de Cypress
-        run: npx cypress install
+      - name: Cypress install
+        uses: cypress-io/github-action@v6
+        with:
+          runTests: false
 
-      - name: Verificar Cypress
-        run: npx cypress verify
+      # Usa tu suite principal (o cambia a auditoria:clean si quieres)
+      - name: Run audit
+        run: npm run test:evidencias
 
-      # Ping no bloqueante a la URL pública (evita bloqueos de wait-on)
-      - name: Smoke ping a BASE_URL (no bloqueante)
-        run: |
-          echo "Probando disponibilidad de $BASE_URL…"
-          curl -I -L --retry 3 --retry-delay 2 --retry-all-errors --max-time 15 "$BASE_URL" || true
-
-      # 1) Limpieza de informe previo (tu script usa cross-env internamente)
-      - name: Limpiar informe anterior
-        run: npm run auditoria:clean
-
-      # 2) Auditoría principal (sitemap + discovery)
-      - name: Ejecutar auditoría A11Y (mapa del sitio + descubrimiento)
-        run: npm run auditoria
-
-      # Artefactos: sube toda la carpeta auditorias/ generada por tu config
-      - name: Subir artefactos de auditoría
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: auditorias
-          path: auditorias/
-          retention-days: 14
+          name: audit-artifacts
+          path: |
+            cypress/videos/**
+            cypress/screenshots/**
+            auditorias/**/*
+          retention-days: 7
+
