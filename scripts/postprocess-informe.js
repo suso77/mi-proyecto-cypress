@@ -1,37 +1,76 @@
 // scripts/postprocess-informe.js
-/* eslint-disable no-console */
+// Normaliza enlaces a TEXTO PLANO en los artefactos del informe (CSV y MD)
+
 const fs = require('fs');
 const path = require('path');
 
-const CSV_MODE = (process.env.CSV_MODE || 'excel').toLowerCase();
-const CSV_SEP  = CSV_MODE === 'tsv' ? '\t' : (CSV_MODE === 'sheets' ? ',' : ';');
+function todayFolderFor(baseUrl) {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const host = (new URL(baseUrl || 'http://localhost')).host.replace(/[:/\\]/g, '-');
+  return path.join('auditorias', `${dd}-${mm}-${yyyy}-${host}`);
+}
 
-function getBaseDir() {
-  const SITE_SLUG = (process.env.SITE_URL || 'https://sitio-desconocido')
-    .replace(/^https?:\/\//, '')
-    .replace(/\/$/, '');
-  const FECHA = new Date().toLocaleDateString('es-ES').replace(/\//g, '-');
-  return path.join('auditorias', `${FECHA}-${SITE_SLUG}`);
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || process.env.SITE_URL || 'http://localhost';
+const REPORT_DIR = todayFolderFor(PUBLIC_BASE_URL);
+const CSV_FILE = path.join(REPORT_DIR, 'informe.csv');
+const MD_FILE  = path.join(REPORT_DIR, 'informe.md');
+
+// Convierte =HYPERLINK("URL","Texto")  ->  URL
+// Acepta comillas simples/dobles y posibles espacios tras la coma
+const HYPERLINK_RX = /=\s*HYPERLINK\s*\(\s*["']([^"']+)["']\s*,\s*["'][^"']*["']\s*\)/gi;
+
+// En Markdown, por si hubiera [Texto](=HYPERLINK("URL","Texto")) -> URL
+const MD_HYPERLINK_RX = /\[([^\]]+)\]\(=\s*HYPERLINK\s*\(\s*["']([^"']+)["']\s*,\s*["'][^"']*["']\s*\)\)/gi;
+
+// Además, capturamos casos con separador punto y coma (Excel ES)
+// =HYPERLINK("URL";"Texto")
+const HYPERLINK_SEMI_RX = /=\s*HYPERLINK\s*\(\s*["']([^"']+)["']\s*;\s*["'][^"']*["']\s*\)/gi;
+
+// Limpia un contenido de archivo convirtiendo todas las fórmulas a URL plano
+function stripHyperlinkFormulas(str) {
+  let out = str;
+
+  // Primero variantes de punto y coma
+  out = out.replace(HYPERLINK_SEMI_RX, (_, url) => url);
+
+  // Variante estándar con coma
+  out = out.replace(HYPERLINK_RX, (_, url) => url);
+
+  // Markdown que envuelve la fórmula
+  out = out.replace(MD_HYPERLINK_RX, (_, _text, url) => url);
+
+  return out;
+}
+
+function processFileIfExists(filePath) {
+  if (!fs.existsSync(filePath)) return false;
+  const original = fs.readFileSync(filePath, 'utf8');
+  const cleaned = stripHyperlinkFormulas(original);
+  if (cleaned !== original) {
+    fs.writeFileSync(filePath, cleaned, 'utf8');
+    console.log(`[postprocess] Limpio HYPERLINK() -> texto en: ${filePath}`);
+  } else {
+    console.log(`[postprocess] Sin cambios (no había fórmulas) en: ${filePath}`);
+  }
+  return true;
 }
 
 (function main() {
-  const baseDir = getBaseDir();
-  const file = path.join(baseDir, CSV_MODE === 'tsv' ? 'informe-accesibilidad.tsv' : 'informe-accesibilidad.csv');
-  if (!fs.existsSync(file)) {
-    console.log('ℹ️ No hay informe que postprocesar:', file);
-    return;
-  }
-  const raw = fs.readFileSync(file, 'utf8');
-  const lines = raw.split(/\r?\n/).filter(Boolean);
-  if (lines.length <= 1) {
-    console.log('ℹ️ Informe vacío, sin cambios.');
-    return;
+  if (!fs.existsSync(REPORT_DIR)) {
+    console.warn(`[postprocess] Carpeta de informe NO encontrada: ${path.resolve(REPORT_DIR)}`);
+    process.exit(0);
   }
 
-  // Mantener BOM + cabecera y normalizar columnas (no tocamos valores)
-  const header = lines[0];
-  const body   = lines.slice(1);
-  const out = [header].concat(body).join('\n');
-  fs.writeFileSync(file, out + '\n', 'utf8');
-  console.log('✅ Postproceso finalizado.');
+  const okCsv = processFileIfExists(CSV_FILE);
+  const okMd  = processFileIfExists(MD_FILE);
+
+  if (!okCsv && !okMd) {
+    console.warn('[postprocess] No hay informe.csv ni informe.md para limpiar (aún).');
+  }
 })();
+
+
+

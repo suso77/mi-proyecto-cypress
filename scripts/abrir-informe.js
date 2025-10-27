@@ -1,83 +1,55 @@
 // scripts/abrir-informe.js
 const fs = require("fs");
 const path = require("path");
-const cp = require("child_process");
+const { execSync } = require("child_process");
 
-function hoyES() {
-  return new Date().toLocaleDateString("es-ES").replace(/\//g, "-"); // DD-MM-YYYY
+function findLatestReportDir(base = "auditorias") {
+  if (!fs.existsSync(base)) return null;
+  const dirs = fs.readdirSync(base)
+    .filter(d => fs.statSync(path.join(base, d)).isDirectory())
+    .sort((a,b) => fs.statSync(path.join(base,b)).mtimeMs - fs.statSync(path.join(base,a)).mtimeMs);
+  return dirs[0] ? path.join(base, dirs[0]) : null;
 }
 
-function slugSitio() {
-  const raw = (process.env.SITE_URL || "https://www.hiexperience.es")
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "");
-  return raw;
-}
-
-function carpetasDeHoy() {
-  const base = path.join("auditorias");
-  const today = hoyES();
-  const prefer = path.join(base, `${today}-${slugSitio()}`);
-
-  const out = [];
-  if (fs.existsSync(prefer)) out.push(prefer);
-
-  if (fs.existsSync(base)) {
-    for (const d of fs.readdirSync(base)) {
-      if (d.startsWith(today + "-")) {
-        const p = path.join(base, d);
-        try {
-          if (fs.statSync(p).isDirectory() && !out.includes(p)) out.push(p);
-        } catch {}
-      }
-    }
-  }
-  return out;
-}
-
-function candidatosInformes(dir) {
-  const files = [];
-  for (const name of ["informe-accesibilidad.csv", "informe-accesibilidad.tsv"]) {
-    const f = path.join(dir, name);
-    if (fs.existsSync(f)) {
-      try {
-        files.push({ file: f, mtime: fs.statSync(f).mtimeMs });
-      } catch {}
-    }
-  }
-  return files;
-}
-
-(function main () {
-  const dirs = carpetasDeHoy();
-  if (!dirs.length) {
-    console.log("ℹ️ No hay carpeta de auditoría para hoy todavía.");
-    return;
-  }
-
-  let best = null;
-  for (const dir of dirs) {
-    for (const cand of candidatosInformes(dir)) {
-      if (!best || cand.mtime > best.mtime) best = cand;
-    }
-  }
-
-  if (!best) {
-    console.log("ℹ️ Aún no existe informe CSV/TSV en las carpetas de hoy.");
-    return;
-  }
-
-  const opener =
-    process.platform === "darwin" ? "open" :
-    process.platform === "win32" ? "start" :
-    "xdg-open";
-
+function openFile(filepath) {
   try {
-    cp.execSync(`${opener} ${JSON.stringify(best.file)}`, { stdio: "ignore" });
-    console.log("✅ Informe abierto:", best.file);
-  } catch {
-    console.log("⚠️ No se pudo abrir automáticamente. Archivo listo en:", best.file);
+    if (process.platform === "darwin") {
+      execSync(`open "${filepath}"`, { stdio: "ignore" });
+    } else if (process.platform === "win32") {
+      execSync(`start "" "${filepath}"`, { stdio: "ignore", shell: "cmd.exe" });
+    } else {
+      execSync(`xdg-open "${filepath}"`, { stdio: "ignore" });
+    }
+    console.log("📄 Abriendo:", filepath);
+  } catch (e) {
+    console.log("ℹ️ No se pudo abrir automáticamente. Ruta:", filepath);
+  }
+}
+
+(function main() {
+  const dir = findLatestReportDir();
+  if (!dir) {
+    console.log("⚠️ No se encontró carpeta de auditorías.");
+    return;
+  }
+  // Preferimos TSV por compatibilidad universal
+  const tsv = path.join(dir, "informe-accesibilidad.tsv");
+  const csv = path.join(dir, "informe-accesibilidad.csv");
+  if (fs.existsSync(tsv)) {
+    openFile(tsv);
+  } else if (fs.existsSync(csv)) {
+    openFile(csv);
+  } else {
+    console.log("⚠️ No se encontró informe .tsv/.csv en:", dir);
   }
 })();
+
+
+
+
+
+
+
+
 
 

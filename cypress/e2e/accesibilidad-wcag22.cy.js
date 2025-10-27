@@ -1,25 +1,40 @@
-// ♿ Auditoría WCAG 2.1 + 2.2 (flujo secuencial garantizado)
+// Auditoría WCAG 2.1 + 2.2 de páginas clave (flujo secuencial)
+
+// ===== Fallback robusto para la URL base del sitio =====
+const SITE = Cypress.env('SITE_URL') || Cypress.config('baseUrl');
+if (!SITE) throw new Error('Falta SITE_URL o baseUrl');
+const U = (path = '/') => new URL(path, SITE).href;
+// =======================================================
+
 describe('♿ Auditoría WCAG 2.1 + 2.2 (flujo secuencial garantizado)', () => {
-  // Lista real de URLs a auditar de forma secuencial
-  const urls = ['/', '/lander']; // ajusta según tu sitemap
+  it('Audita home /', () => {
+    cy.visit(SITE, { failOnStatusCode: false });
+    cy.wait(250);
+    cy.injectAxe();
 
-  urls.forEach((url) => {
-    it(`Audita (secuencial) ${url}`, () => {
-      // Si una URL puede devolver 404 (como /lander), evita que Cypress falle por el status
-      cy.visit(url, { failOnStatusCode: false });
-      cy.injectAxe();
+    const c = Cypress.Commands._commands || {};
+    if (c.openMenusHeuristics) cy.openMenusHeuristics();
 
-      // Auditoría SIN context (no pasar null)
-      cy.checkA11yReport({
-        runOnly: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22a','wcag22aa'],
-        folderHint: 'wcag22',
-      });
+    cy.checkA11yReport('body', {
+      folderHint: 'wcag22',
+      maxNodesPerViolation: 1,
+      viewports: [[1280, 800], [375, 812]],
+    });
+  });
+
+  it('Audita /lander', () => {
+    cy.visit(U('/lander'), { failOnStatusCode: false });
+    cy.wait(250);
+    cy.injectAxe();
+
+    const c = Cypress.Commands._commands || {};
+    if (c.openMenusHeuristics) cy.openMenusHeuristics();
+
+    cy.checkA11yReport('body', {
+      folderHint: 'wcag22',
+      maxNodesPerViolation: 1,
+      viewports: [[1280, 800], [375, 812]],
     });
   });
 });
-
-
-
-
-
 

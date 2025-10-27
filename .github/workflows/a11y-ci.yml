@@ -1,22 +1,27 @@
 name: A11y CI (Cypress headless)
 
 on:
-  push:
-    branches: [ main, artifacts ]
   pull_request:
+  push:
+    branches: [ main ]
 
 jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: "https://www.hiexperience.es"
+      # Ajusta si tu app arranca en otro puerto:
+      BASE_URL: "http://localhost:5173" # vite preview
+      # Si usas Next:
+      # BASE_URL: "http://localhost:3000"
+      # Si sirves /dist con http-server:
+      # BASE_URL: "http://localhost:8080"
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node (cache npm)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -25,25 +30,30 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Verify Cypress
+      - name: Build app (si aplica)
+        run: npm run build --if-present
+
+      - name: Start app (si aplica)
+        run: npm run start --if-present &
+
+      - name: Esperar a que responda la app
+        run: npx wait-on $BASE_URL
+
+      - name: Verificar Cypress (opcional)
         run: npx cypress verify
 
-      - name: Run Cypress (smoke only, electron)
-        run: npm run test:a11y:smoke
+      - name: Ejecutar Cypress (headless)
+        run: npm run test:a11y
         env:
           CYPRESS_baseUrl: ${{ env.BASE_URL }}
 
-      - name: Upload Cypress artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: auditorias
-          # Captura evidencias en tu estructura real y las rutas clásicas de Cypress
-          path: |
-            auditorias/**/screenshots/**
-            auditorias/**/videos/**
-            auditorias/**/*.{csv,tsv,json,xml}
-            cypress/screenshots/**
-            cypress/videos/**
-          retention-days: 14
-          if-no-files-found: ignore
+      # Publicación de artefactos completos la haremos en la siguiente tarea
+      # - name: Subir screenshots/videos (opcional ahora)
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: cypress-artifacts
+      #     path: |
+      #       cypress/screenshots
+      #       cypress/videos
+      #     retention-days: 7

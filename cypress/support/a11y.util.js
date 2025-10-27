@@ -1,43 +1,30 @@
 // cypress/support/a11y.util.js
+// Pequeñas utilidades comunes
 
-export function violationsToCsvRows(url, violations, maxNodesPerViolation = 2) {
-  const rows = [];
-  violations.forEach(v => {
-    const nodes = v.nodes.slice(0, maxNodesPerViolation);
-    nodes.forEach(n => {
-      rows.push({
-        url,
-        id: v.id,
-        impact: v.impact || '',
-        description: v.description || '',
-        help: v.help || '',
-        helpUrl: v.helpUrl || '',
-        selector: (n.target || []).join(' | '),
-        html: n.html || '',
-        failureSummary: n.failureSummary || '',
-      });
-    });
-  });
-  return rows;
+// Devuelve SITE_URL o baseUrl; lanza si no hay ninguno (para avisar pronto)
+export function getBaseSite() {
+  const site = Cypress.env('SITE_URL') || Cypress.config('baseUrl');
+  if (!site) throw new Error('Falta SITE_URL o baseUrl');
+  return site;
 }
 
-export function violationsToMarkdown(url, violations, maxNodesPerViolation = 2) {
-  const lines = [];
-  lines.push(`## ${url}`);
-  if (!violations.length) {
-    lines.push('- ✅ Sin violaciones');
-    return lines.join('\n');
-  }
-  violations.forEach(v => {
-    lines.push(`- **${v.id}** (${v.impact || 'n/a'}): ${v.help}`);
-    lines.push(`  - ${v.description}`);
-    lines.push(`  - Ref: ${v.helpUrl}`);
-    const nodes = v.nodes.slice(0, maxNodesPerViolation);
-    nodes.forEach((n, i) => {
-      lines.push(`  - Node ${i + 1}: \`${(n.target || []).join(' | ')}\``);
-      if (n.failureSummary) lines.push(`    - ${n.failureSummary.replace(/\n/g, ' ')}`);
-    });
-  });
-  return lines.join('\n');
+// Construye URL absoluta segura
+export function ABS(path = '/') {
+  const site = getBaseSite();
+  return new URL(path, site).href;
 }
+
+// Asegura selector simple para logging / evidencias
+export function prettySelector(target) {
+  if (Array.isArray(target) && target[0]) return String(target[0]);
+  if (typeof target === 'string') return target;
+  return 'body';
+}
+
+// Espera corta para estabilizar rehidrataciones
+export function shortStabilize() {
+  cy.wait(250, { log: false });
+}
+
+
 

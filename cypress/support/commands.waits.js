@@ -1,29 +1,12 @@
 // cypress/support/commands.waits.js
+// Pequeñas esperas/ayudas opcionales (no-op seguras)
 
-// Desactiva transiciones/animaciones que rompen capturas
-Cypress.Commands.add('disableAnimations', () => {
-  const css = `
-    *, *::before, *::after { 
-      -webkit-transition: none !important; 
-      transition: none !important; 
-      animation: none !important; 
-      caret-color: transparent !important;
-    }
-    html { scroll-behavior: auto !important; }
-  `;
-  cy.document().then((doc) => {
-    const style = doc.createElement('style');
-    style.appendChild(doc.createTextNode(css));
-    doc.head.appendChild(style);
-  });
-});
-
-// Espera corta para estabilizar DOM antes de lanzar axe
-Cypress.Commands.add('waitA11yIdle', (ms = 150) => {
+Cypress.Commands.add('waitForHydration', (ms = 250) => {
   cy.wait(ms, { log: false });
 });
 
-beforeEach(() => {
-  cy.disableAnimations();
+Cypress.Commands.add('safeScrollIntoView', (sel) => {
+  cy.get('body').then($body => {
+    if ($body.find(sel).length) cy.get(sel).scrollIntoView({ duration: 0 });
+  });
 });
-

@@ -1,62 +1,94 @@
-name: A11Y Evidence
+name: A11y Evidence (con capturas)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-  pull_request:
+  workflow_run:
+    workflows: [ "A11y CI (WCAG 2.1/2.2)" ]
+    types: [ completed ]
+
+permissions:
+  contents: read
 
 jobs:
-  a11y:
+  evidence:
+    name: "Evidence – ${{ matrix.target }}"
     runs-on: ubuntu-latest
+
     strategy:
+      fail-fast: false
       matrix:
-        browser: [chrome, firefox]  # añade electron si quieres
-    env:
-      CI: true
-      SITE_URL: ${{ secrets.SITE_URL }}
-      PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }} # si usas CDN
-      CSV_MODE: excel
-      LINK_MODE: formula
+        include:
+          - target: staging
+          - target: prod
+
+    concurrency:
+      group: a11y-evidence-${{ github.ref }}-${{ matrix.target }}
+      cancel-in-progress: true
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Use Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
+          cache: npm
 
-      - name: Install deps
+      - name: Install deps (ci)
         run: npm ci
 
-      - name: Cypress run (${{ matrix.browser }})
-        run: npx cypress run --browser ${{ matrix.browser }}
+      - name: Resolve target env (evidence)
+        id: res
+        shell: bash
+        env:
+          SITE_URL_PROD:            ${{ secrets.SITE_URL_PROD }}
+          PUBLIC_BASE_URL_PROD:     ${{ secrets.PUBLIC_BASE_URL_PROD }}
+          SITE_URL_STAGING:         ${{ secrets.SITE_URL_STAGING }}
+          PUBLIC_BASE_URL_STAGING:  ${{ secrets.PUBLIC_BASE_URL_STAGING }}
+          BASIC_AUTH_USER:          ${{ secrets.BASIC_AUTH_USER }}
+          BASIC_AUTH_PASS:          ${{ secrets.BASIC_AUTH_PASS }}
+        run: |
+          if [ "${{ matrix.target }}" = "prod" ]; then
+            SITE_URL="$SITE_URL_PROD"
+            PUBLIC_BASE_URL="$PUBLIC_BASE_URL_PROD"
+          else
+            SITE_URL="$SITE_URL_STAGING"
+            PUBLIC_BASE_URL="$PUBLIC_BASE_URL_STAGING"
+          fi
 
-      - name: Postprocess CSV/TSV
-        run: node scripts/postprocess-informe.js
+          echo "SITE_URL=$SITE_URL" >> "$GITHUB_OUTPUT"
+          echo "PUBLIC_BASE_URL=$PUBLIC_BASE_URL" >> "$GITHUB_OUTPUT"
+          echo "BASIC_AUTH_USER=$BASIC_AUTH_USER" >> "$GITHUB_OUTPUT"
+          echo "BASIC_AUTH_PASS=$BASIC_AUTH_PASS" >> "$GITHUB_OUTPUT"
 
-      - name: Upload artifacts (auditorias/)
+          TODAY="$(date +'%d-%m-%Y')"
+          HOST="$(python3 -c "import sys, urllib.parse as u; print(u.urlparse(sys.argv[1]).netloc.replace(':','-'))" "$PUBLIC_BASE_URL")"
+          echo "REPORT_FOLDER=auditorias/${TODAY}-${HOST}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Cypress – evidence mode
+        run: npm run auditoria:full
+        env:
+          SITE_URL:        ${{ steps.res.outputs.SITE_URL }}
+          PUBLIC_BASE_URL: ${{ steps.res.outputs.PUBLIC_BASE_URL }}
+          BASIC_AUTH_USER: ${{ steps.res.outputs.BASIC_AUTH_USER }}
+          BASIC_AUTH_PASS: ${{ steps.res.outputs.BASIC_AUTH_PASS }}
+          CSV_MODE: tsv
+          LINK_MODE: plain
+          CYPRESS_A11Y_RUNALL: "1"
+
+      - name: Post-procesado informe
+        run: npm run postprocess:informe
+        env:
+          SITE_URL:        ${{ steps.res.outputs.SITE_URL }}
+          PUBLIC_BASE_URL: ${{ steps.res.outputs.PUBLIC_BASE_URL }}
+
+      - name: Upload report artifacts (evidence)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: a11y-artifacts-${{ matrix.browser }}
-          path: auditorias/
+          name: a11y-evidence-${{ matrix.target }}
+          path: ${{ steps.res.outputs.REPORT_FOLDER }}
+          if-no-files-found: warn
+          retention-days: 14
 
-  # (Opcional) Publica a S3 si defines secrets de AWS y PUBLIC_BASE_URL apunta a ese bucket.
-  publish-s3:
-    if: ${{ always() && vars.A11Y_PUBLISH_S3 == 'true' }}
-    needs: [a11y]
-    runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-      PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./artifacts
-      - name: Publish to S3
-        run: bash scripts/ci-export-artifacts-s3.sh ./artifacts

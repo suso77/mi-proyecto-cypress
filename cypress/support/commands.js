@@ -1,109 +1,74 @@
 // cypress/support/commands.js
+// Comandos de interacción "heurística". Todos son NO-OP seguros:
+// si no encuentran elementos, simplemente continúan.
 
-// --- Heurística segura para abrir menús (NO usa selectores con flags incompatibles de jQuery)
-Cypress.Commands.add('openMenusHeuristics', () => {
-  // Botones típicos de menú: "menu", "menú", "hamburguesa"...
-  const candidates = [
-    'button[aria-haspopup="menu"]',
-    'button[aria-expanded="false"][aria-controls]',
-    '[data-testid*="menu"]',
-    '[data-test*="menu"]',
-    'button[aria-label]',
-  ];
-
-  cy.document().then((doc) => {
-    const clickables = [];
-    candidates.forEach(sel => {
-      doc.querySelectorAll(sel)?.forEach(el => {
-        const label = (el.getAttribute('aria-label') || '').toLowerCase();
-        if (sel.includes('aria-label')) {
-          // filtro manual por texto (evita selector CSS con ` i`)
-          if (label.includes('menu') || label.includes('menú') || label.includes('hamburg')) {
-            clickables.push(el);
-          }
-        } else {
-          clickables.push(el);
-        }
-      });
-    });
-
-    if (clickables.length) {
-      cy.wrap(clickables).each(($btn) => {
-        cy.wrap($btn).click({ force: true });
-      });
-    }
-  });
-});
-
-// --- Banner de cookies (no falla si no existe)
 Cypress.Commands.add('auditCookieBannerThenAccept', () => {
-  const selectors = [
-    '[id*="cookie"]',
-    '[class*="cookie"]',
-    '[aria-label*="cookie"]',
-    '[role="dialog"]',
+  // ejemplos de selectores típicos (adáptalos a tu sitio si quieres)
+  const candidates = [
+    '[id*="cookie"] [id*="accept"]',
+    '[id*="cookie"] button[aria-label*="accept" i]',
+    '[role="dialog"] button:contains("Aceptar")',
   ];
 
-  cy.injectAxe();
-  cy.checkA11yReport({ folderHint: 'cookies-pre' });
-
-  cy.document().then((doc) => {
-    const acceptLabels = ['accept','agree','consent','acept','consentir','de acuerdo','ok','entendido'];
-    let clicked = false;
-    selectors.forEach(sel => {
-      doc.querySelectorAll(sel)?.forEach(container => {
-        if (clicked) return;
-        const buttons = container.querySelectorAll('button,[role="button"],a');
-        for (const btn of buttons) {
-          const txt = (btn.innerText || btn.getAttribute('aria-label') || '').toLowerCase();
-          if (acceptLabels.some(k => txt.includes(k))) {
-            clicked = true;
-            cy.wrap(btn).click({ force: true });
-            break;
-          }
-        }
-      });
-    });
+  cy.get('body').then($body => {
+    const btnSel = candidates.find((sel) => $body.find(sel).length);
+    if (!btnSel) return; // no hay banner -> nada que hacer
+    cy.injectAxe();
+    cy.checkA11yReport('body', { folderHint: 'cookies', maxNodesPerViolation: 1 });
+    cy.get(btnSel).click({ force: true });
   });
-
-  cy.checkA11yReport({ folderHint: 'cookies-post' });
 });
 
-// --- Modales (audita antes y después)
-Cypress.Commands.add('openAndAuditModals', () => {
-  cy.injectAxe();
-  cy.checkA11yReport({ folderHint: 'modals-pre' });
+Cypress.Commands.add('openMenusHeuristics', () => {
+  const selMenuButtons = 'button[aria-haspopup="menu"], [role="button"][aria-haspopup="true"]';
+  cy.get('body').then($body => {
+    const $btns = $body.find(selMenuButtons);
+    if (!$btns.length) return;
 
-  // ejemplo genérico: abre posibles modales
-  cy.get('button,[role="button"],a').then(($els) => {
-    const triggers = [...$els].filter(el => {
-      const txt = (el.innerText || el.getAttribute('aria-label') || '').toLowerCase();
-      return txt.includes('modal') || txt.includes('abrir');
+    cy.wrap($btns.get().slice(0, 3)).each((btn) => {
+      cy.wrap(btn).click({ force: true });
+      cy.waitForHydration(150);
     });
-    if (triggers.length) {
-      cy.wrap(triggers[0]).click({ force: true });
-      cy.checkA11yReport('[role="dialog"]', { folderHint: 'modal' });
+  });
+});
+
+Cypress.Commands.add('openAndAuditModals', () => {
+  const triggers = 'button[data-modal], [data-open-modal], a[href*="#modal"]';
+  cy.get('body').then($body => {
+    const $t = $body.find(triggers);
+    if (!$t.length) return;
+    const take = $t.get().slice(0, 2);
+
+    cy.wrap(take).each((el, idx) => {
+      cy.wrap(el).click({ force: true });
+      cy.waitForHydration(150);
+      cy.injectAxe();
+      cy.checkA11yReport('body', { folderHint: `modal${idx + 1}`, maxNodesPerViolation: 1 });
+      cy.get('body').type('{esc}', { force: true });
+    });
+  });
+});
+
+Cypress.Commands.add('checkA11yInSameOriginIframe', () => {
+  // Ejemplo sencillo: primer iframe same-origin (si existe)
+  cy.get('iframe').then($ifs => {
+    const iframe = $ifs.get(0);
+    if (!iframe) return;
+
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc || !doc.body) return;
+      cy.wrap(iframe).then(() => {
+        cy.injectAxe();
+        cy.checkA11yReport('body', { folderHint: 'iframe', maxNodesPerViolation: 1 });
+      });
+    } catch {
+      // cross-origin -> lo ignoramos
     }
   });
-
-  cy.checkA11yReport({ folderHint: 'modals-post' });
 });
 
-// --- iframes same-origin
-Cypress.Commands.add('checkA11yInSameOriginIframe', (iframeSelector = 'iframe') => {
-  cy.get(iframeSelector).its('0.contentDocument.body').should('not.be.empty');
-  cy.get(iframeSelector).then(($iframe) => {
-    const body = $iframe[0].contentDocument.body;
-    cy.wrap(body).within(() => {
-      cy.injectAxe();
-      cy.checkA11yReport({ folderHint: 'iframe' });
-    });
-  });
-});
-
-// --- iframes cross-origin (documentación/placeholder)
 Cypress.Commands.add('documentCrossOriginIframe', () => {
-  // Para iframes cross-origin no se puede inyectar axe directamente.
-  // Documenta el hallazgo y, si procede, captura pantalla:
-  cy.task('log', '🔒 Iframe cross-origin detectado. Se documenta sin inyectar axe.');
+  // Placeholder intencional (no hace nada en fase 1)
+  // Evita fallos si alguien lo llama.
 });

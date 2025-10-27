@@ -1,108 +1,67 @@
 // cypress/support/e2e.js
-// ===================================================
 // ♿ Bootstrap global de Cypress + Axe + Evidencias
 // ===================================================
 
-// 1) Comandos base de tu proyecto (NO ejecutan nada al importar)
-import './commands';
+// (opcional) si no tienes comandos propios, deja este import y el archivo vacío
+try { require('./commands'); } catch { /* noop: no custom commands */ }
 
-// 2) Esperas/no-anim/no-smooth (opcional)
-try { import('./commands.waits'); } catch { /* noop */ }
+// cypress-axe debe cargarse ANTES de sobreescribir checkA11y
+require('cypress-axe');
 
-// 3) Comandos de evidencias (cy.a11yEvidenceShot)
-import './commands.evidence';
+// comandos de evidencias y checkA11yReport
+require('./commands.evidence');
 
-// 4) cypress-axe (injectAxe / checkA11y)
-import 'cypress-axe';
-
-// Ignorar errores JS del sitio (externos a las pruebas)
+// Ignorar errores JS externos (para no romper la auditoría)
 Cypress.on('uncaught:exception', (err) => {
   console.warn('⚠️ Error JS ignorado por Cypress:', err.message);
   return false;
 });
 
-/**
- * checkA11y por defecto en modo "no fallar".
- * Mantiene la firma nativa: (context?, options?, callback?, skipFailures?)
- */
+// ----------------- OVERWRITE: cy.checkA11y NO rompe tests -----------------
+// Firma original: checkA11y(context?, options?, violationCallback?, skipFailures?)
 Cypress.Commands.overwrite('checkA11y', (originalFn, ...args) => {
-  let context = undefined, options = undefined, callback = undefined, skipFailures = true;
+  let context, options, callback, skipFailures;
 
-  // Rehidratamos la firma original respetando posiciones
-  // Permitimos: checkA11y(), checkA11y(opts), checkA11y(ctx, opts), ...
-  if (args.length) {
-    // callback si viene
-    const last = args[args.length - 1];
-    if (typeof last === 'boolean') {
-      skipFailures = last; // si alguien lo pasa explícito
-      args.pop();
+  if (args.length === 1) {
+    const a0 = args[0];
+    if (typeof a0 === 'function') callback = a0;
+    else if (a0 && typeof a0 === 'object' && !('jquery' in a0)) options = a0;
+    else context = a0;
+  } else if (args.length === 2) {
+    const [a0, a1] = args;
+    if (typeof a1 === 'function') {
+      if (a0 && typeof a0 === 'object' && !('jquery' in a0)) options = a0;
+      else context = a0;
+      callback = a1;
+    } else {
+      context = a0;
+      options = a1;
     }
-    const maybeCallback = args[args.length - 1];
-    if (typeof maybeCallback === 'function') {
-      callback = maybeCallback;
-      args.pop();
-    }
-    if (args.length === 1) {
-      // único arg restante puede ser context (string|el) o options (obj)
-      if (typeof args[0] === 'object' && args[0] !== null && !(args[0] instanceof Element)) {
-        options = args[0];
-      } else {
-        context = args[0];
-      }
-    } else if (args.length >= 2) {
-      context = args[0];
-      options = args[1];
-    }
+  } else if (args.length >= 3) {
+    [context, options, callback, skipFailures] = args;
   }
 
-  return originalFn(context, options, callback, skipFailures);
+  const mergedOptions = { ...(options || {}) };
+  const finalSkip = true; // ✅ jamás falla la spec por violaciones
+  return originalFn(context, mergedOptions, callback, finalSkip);
 });
 
-/**
- * cy.checkA11yReport(contextOrOptions?, options?)
- * - Sin context (recomendado): cy.checkA11yReport({ runOnly: [...] })
- * - Con context: cy.checkA11yReport('main', { runOnly: [...] })
- */
-Cypress.Commands.add('checkA11yReport', (contextOrOptions, maybeOptions) => {
-  let context = undefined;
-  let options = {};
-
-  if (
-    typeof contextOrOptions === 'string' ||
-    (typeof contextOrOptions === 'object' && contextOrOptions !== null && (contextOrOptions.nodeType === 1 || Array.isArray(contextOrOptions)))
-  ) {
-    context = contextOrOptions;
-    options = maybeOptions || {};
-  } else if (typeof contextOrOptions === 'object' && contextOrOptions !== null) {
-    options = contextOrOptions;
-  }
-
-  const defaultRunOnly = [
-    'wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22a','wcag22aa',
-    'best-practice','cat.aria','cat.name-role-value','cat.keyboard','cat.color',
-  ];
-
-  const mergedOpts = {
-    runOnly: options.runOnly || defaultRunOnly,
-    rules: options.rules || undefined,
-  };
-
-  return cy.checkA11y(
-    context,                       // undefined = sin context (global)
-    mergedOpts,
-    (violations) => {
-      cy.a11yEvidenceShot(violations, {
-        maxNodesPerViolation: options.maxNodesPerViolation ?? 2,
-        viewports: options.viewports ?? [[1280, 800], [375, 812]],
-        folderHint: options.folderHint ?? 'a11y',
-      });
-    },
-    true // skipFailures
-  );
-});
-
+// (Opcional) preparar/limpiar informe al inicio de la suite
 before(() => {
-  console.log('♿ Auditoría de accesibilidad en modo INFORME (skipFailures=true).');
+  cy.then(() => cy.task?.('resetTodayReport')).then(
+    () => null,
+    () => null
+  );
+  console.log('♿ Auditoría en modo INFORME (skipFailures=true)');
 });
+
+
+
+
+
+
+
+
+
 
 

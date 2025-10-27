@@ -1,4 +1,5 @@
-// Verifica que los custom commands están cargados en Cypress
+// Verifica que los custom commands estén disponibles
+
 describe('Custom commands están registrados', () => {
   it('openMenusHeuristics existe', () => {
     expect(cy.openMenusHeuristics, 'openMenusHeuristics').to.be.a('function');
@@ -20,3 +21,5 @@ describe('Custom commands están registrados', () => {
     expect(cy.documentCrossOriginIframe, 'documentCrossOriginIframe').to.be.a('function');
   });
 });
+
+
