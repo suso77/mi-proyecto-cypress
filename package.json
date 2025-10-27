@@ -1,10 +1,11 @@
 {
+  "name": "mi-proyecto-cypress",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-<<<<<<< HEAD
-    "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es npx cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
-
-    "// --------- EJECUCIONES BASE ---------": "====================",
-=======
     "// --------- PRE/POST ---------": "====================",
     "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
     "posttest:evidencias": "node scripts/abrir-informe.js || true",
@@ -14,7 +15,6 @@
     "auditoria:clean": "cross-env SITE_URL=https://www.hiexperience.es npx cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/clean.cy.js\"",
 
     "// --------- WRAPPERS ---------": "====================",
->>>>>>> 5c9c880 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
     "auditoria": "cross-env PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
     "auditoria:file": "cross-env FORCE_FILE_LINKS=1 npm run test:evidencias",
 
@@ -28,34 +28,20 @@
     "auditoria:sheets:local": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
     "auditoria:sheets:local:plain": "cross-env CSV_MODE=sheets LINK_MODE=plain PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
 
-<<<<<<< HEAD
-    "// --------- TSV (máxima estabilidad en Sheets/Numbers) ---------": "====================",
-=======
     "// --------- TSV ---------": "====================",
->>>>>>> 5c9c880 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
     "auditoria:tsv:local": "cross-env CSV_MODE=tsv LINK_MODE=plain PUBLIC_BASE_URL=http://localhost:8080 npm run test:evidencias",
     "auditoria:tsv:public": "cross-env CSV_MODE=tsv LINK_MODE=plain PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
 
     "// --------- UTILIDADES ---------": "====================",
-<<<<<<< HEAD
-    "auditoria:clean": "cross-env SITE_URL=https://www.hiexperience.es npx cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/clean.cy.js\"",
-=======
->>>>>>> 5c9c880 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
     "serve:auditorias": "http-server -p 8080 -c-1 .",
     "deploy:surge": "surge ./ --domain $SURGE_DOMAIN",
     "auditoria:sheets:surge": "cross-env CSV_MODE=sheets LINK_MODE=formula PUBLIC_BASE_URL=$SURGE_PUBLIC_BASE npm run test:evidencias",
     "abrir:cypress": "npx cypress open --config-file cypress.config.cjs",
-<<<<<<< HEAD
-    "abrir:informe": "node scripts/abrir-informe.js",
-
-    "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
-    "posttest:evidencias": "node scripts/abrir-informe.js || true"
-=======
     "abrir:informe": "node scripts/abrir-informe.js"
->>>>>>> 5c9c880 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
   },
   "devDependencies": {
     "axe-core": "^4.11.0",
+    "axios": "^1.12.2",
     "cross-env": "^10.1.0",
     "cypress": "^15.5.0",
     "cypress-axe": "^1.7.0",
@@ -63,4 +49,3 @@
     "xml2js": "^0.6.2"
   }
 }
-
