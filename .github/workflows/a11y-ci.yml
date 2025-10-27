@@ -9,12 +9,10 @@ jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
-      # Ajusta si tu app arranca en otro puerto:
-      BASE_URL: "http://localhost:5173" # vite preview
-      # Si usas Next:
-      # BASE_URL: "http://localhost:3000"
-      # Si sirves /dist con http-server:
-      # BASE_URL: "http://localhost:8080"
+      # 👉 Ajusta BASE_URL según tu proyecto:
+      BASE_URL: "http://localhost:5173" # vite preview (cámbialo si usas otra cosa)
+      # BASE_URL: "http://localhost:3000"   # Next.js
+      # BASE_URL: "http://localhost:8080"   # http-server sobre /dist
       CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
     steps:
@@ -27,6 +25,15 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      # Cache del binario de Cypress para acelerar runs
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            cypress-cache-${{ runner.os }}-
+
       - name: Install deps
         run: npm ci
 
@@ -36,8 +43,13 @@ jobs:
       - name: Start app (si aplica)
         run: npm run start --if-present &
 
-      - name: Esperar a que responda la app
-        run: npx wait-on $BASE_URL
+      # ⛔️ quitamos wait-on (se cuelga con sitios públicos) y
+      # ✅ usamos un ping no bloqueante con curl
+      - name: Smoke ping a BASE_URL (no bloqueante)
+        if: ${{ startsWith(env.BASE_URL, 'http') }}
+        run: |
+          echo "Probando disponibilidad de $BASE_URL (no bloquea si falla)…"
+          curl -I -L --retry 3 --retry-delay 2 --retry-all-errors --max-time 15 "$BASE_URL" || true
 
       - name: Verificar Cypress (opcional)
         run: npx cypress verify
@@ -47,7 +59,7 @@ jobs:
         env:
           CYPRESS_baseUrl: ${{ env.BASE_URL }}
 
-      # Publicación de artefactos completos la haremos en la siguiente tarea
+      # Publicación de artefactos la haremos en la siguiente tarea
       # - name: Subir screenshots/videos (opcional ahora)
       #   if: always()
       #   uses: actions/upload-artifact@v4
