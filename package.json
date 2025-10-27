@@ -1,5 +1,9 @@
 {
   "scripts": {
+    "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es npx cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
+    "auditoria:clean": "cross-env SITE_URL=https://www.hiexperience.es npx cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/clean.cy.js\"",
+    "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
+    "posttest:evidencias": "node scripts/abrir-informe.js || true",
     "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
     "// --------- EJECUCIONES BASE ---------": "====================",
     "auditoria": "cross-env PUBLIC_BASE_URL=https://www.hiexperience.es npm run test:evidencias",
