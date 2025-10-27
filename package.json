@@ -1,9 +1,4 @@
 {
-  "name": "mi-proyecto-cypress",
-  "version": "1.0.0",
-  "description": "Auditoría automática de accesibilidad WCAG 2.1 / 2.2 con Cypress + Axe",
-  "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "test:evidencias": "cross-env SITE_URL=https://www.hiexperience.es cypress run --config-file cypress.config.cjs --spec \"cypress/e2e/accesibilidad-sitemap.cy.js\"",
 
@@ -33,34 +28,9 @@
     "abrir:cypress": "cypress open --config-file cypress.config.cjs",
 
     "abrir:informe": "node scripts/abrir-informe.js",
+
     "pretest:evidencias": "node scripts/limpiar-auditoria.js --pre || true",
     "posttest:evidencias": "node scripts/abrir-informe.js || true"
-  },
-  "keywords": [
-    "cypress",
-    "axe",
-    "accesibilidad",
-    "wcag",
-    "auditoría",
-    "testing"
-  ],
-  "author": "Suso",
-  "license": "ISC",
-  "devDependencies": {
-    "axe-core": "^4.11.0",
-    "axios": "^1.12.2",
-    "cross-env": "^10.1.0",
-    "cypress": "^15.5.0",
-    "cypress-axe": "^1.7.0",
-    "http-server": "^14.1.1",
-    "papaparse": "^5.4.1",
-    "surge": "^0.23.1",
-    "xml2js": "^0.6.2"
-  },
-  "dependencies": {
-    "csv-parser": "^3.2.0",
-    "csv-writer": "^1.6.0",
-    "node-fetch": "^3.3.2"
   }
 }
 
