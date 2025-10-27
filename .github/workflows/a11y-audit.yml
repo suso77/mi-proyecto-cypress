@@ -1,7 +1,7 @@
-name: Auditoría A11Y (Cypress + axe-core)
+name: a11y
 
 on:
-  workflow_dispatch:        # lo puedes lanzar a mano
+  workflow_dispatch:
   push:
     branches: [ main, master, principal ]
   pull_request:
@@ -10,68 +10,34 @@ jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
-      # Tu sitio y opciones (ajusta si hace falta)
       SITE_URL: https://www.hiexperience.es
-      # PUBLIC_BASE_URL: https://www.hiexperience.es
-      # SITEMAP_PATH: /sitemap.xml
-      # A11Y_INCLUDE: ""
-      # A11Y_EXCLUDE: ""
-      # A11Y_MAX_URLS: "0"       # 0 = sin límite. Pon, por ejemplo, "100" para acotar en CI.
-      # A11Y_INSECURE_SSL: "0"   # pon "1" solo si tu SSL da problemas (temporal)
-
-      # Evita warnings de locale
       LC_ALL: C.UTF-8
       LANG: C.UTF-8
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node (LTS)
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      # Pre-descarga/verifica binarios de Cypress (usa caché interna)
-      - name: Cypress install
+      # La action hará: npm ci, instalar Cypress y ejecutar tu comando
+      - name: Cypress run (usa tu script)
         uses: cypress-io/github-action@v6
         with:
-          runTests: false
+          install-command: npm ci
+          command: npm run test:evidencias
+          # Si quieres limitar URLs:
+          # env: A11Y_MAX_URLS=100
 
-      # Opcional: muestra variables clave en logs
-      - name: Debug env
-        run: |
-          echo "SITE_URL=$SITE_URL"
-          echo "SITEMAP_PATH=${SITEMAP_PATH:-/sitemap.xml}"
-          echo "A11Y_MAX_URLS=${A11Y_MAX_URLS:-0}"
-
-      # Ejecuta tu suite principal (usa cypress.config.cjs que ya migraste a fetch)
-      - name: Run audit (test:evidencias)
-        run: npm run test:evidencias
-
-      # Sube vídeos/screenshots de Cypress (si están habilitados)
-      - name: Upload Cypress artifacts
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cypress-artifacts
+          name: audit-artifacts
           path: |
             cypress/videos/**
             cypress/screenshots/**
-          retention-days: 7
-
-      # Sube informes/CSV/TSV/HTML que generes
-      - name: Upload audit outputs (reports)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: audit-reports
-          path: |
             auditorias/**/*
-            **/*informe*.html
-            **/informe-accesibilidad.*sv
           retention-days: 7
