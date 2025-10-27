@@ -26,6 +26,11 @@
     "posttest:evidencias": "node scripts/abrir-informe.js || true"
   },
   "devDependencies": {
-    "cross-env": "^10.1.0"
+    "axe-core": "^4.11.0",
+    "cross-env": "^10.1.0",
+    "cypress": "^15.5.0",
+    "cypress-axe": "^1.7.0",
+    "undici": "^7.16.0",
+    "xml2js": "^0.6.2"
   }
 }
