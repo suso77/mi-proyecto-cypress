@@ -1,114 +1,69 @@
-name: A11Y Audit (Cypress + axe-core)
+name: Auditoría A11Y (Cypress + axe-core)
 
 on:
   workflow_dispatch:
-    inputs:
-      site_url:
-        description: "SITE_URL (origen de la auditoría)"
-        required: true
-        default: "https://www.hiexperience.es"
-      public_base_url:
-        description: "PUBLIC_BASE_URL (prefijo público de capturas)"
-        required: true
-        default: "https://www.hiexperience.es"
-      a11y_include:
-        description: 'A11Y_INCLUDE (regex, coma-separado). Ej: ^https://www\.hiexperience\.es/(blog|proyectos)'
-        required: false
-        default: ""
-      a11y_exclude:
-        description: 'A11Y_EXCLUDE (regex, coma-separado). Ej: /servihabitat'
-        required: false
-        default: ""
-      a11y_max_urls:
-        description: "A11Y_MAX_URLS (límite superior de URLs por iteración)"
-        required: false
-        default: "5000"
-      csv_mode:
-        description: 'CSV_MODE: tsv | sheets | excel'
-        required: false
-        default: "tsv"
-      link_mode:
-        description: 'LINK_MODE: plain | formula'
-        required: false
-        default: "plain"
-
   push:
-    branches: [ main, master ]
+    branches: [ main, master, principal ]
   pull_request:
-    branches: [ main, master ]
-
-concurrency:
-  group: a11y-audit-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  audit:
-    name: Run A11Y Audit
+  a11y:
     runs-on: ubuntu-latest
-
     env:
-      SITE_URL: ${{ github.event.inputs.site_url || 'https://www.hiexperience.es' }}
-      PUBLIC_BASE_URL: ${{ github.event.inputs.public_base_url || 'https://www.hiexperience.es' }}
-      A11Y_INCLUDE: ${{ github.event.inputs.a11y_include }}
-      A11Y_EXCLUDE: ${{ github.event.inputs.a11y_exclude }}
-      A11Y_MAX_URLS: ${{ github.event.inputs.a11y_max_urls || '5000' }}
-      CSV_MODE: ${{ github.event.inputs.csv_mode || 'tsv' }}
-      LINK_MODE: ${{ github.event.inputs.link_mode || 'plain' }}
-
-      LC_ALL: es_ES.UTF-8
-      LANG: es_ES.UTF-8
-      FORCE_COLOR: 1
-      CI: true
-      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
+      # Evita el warning de locale en logs
+      LC_ALL: C.UTF-8
+      LANG: C.UTF-8
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Node.js 24.x
+      - name: Setup Node (LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: '24.x'
+          node-version: '20'
           cache: 'npm'
 
-      - name: Cache Cypress binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/Cypress
-          key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            cypress-${{ runner.os }}-
-
-      - name: Install dependencies
+      - name: Install dependencies (npm ci)
         run: npm ci
 
-      - name: Verify Cypress
-        run: npx cypress verify
+      # Asegura binarios de Cypress (usa caché si puede)
+      - name: Cypress install
+        uses: cypress-io/github-action@v6
+        with:
+          runTests: false
 
-      - name: Clean previous report
-        run: npm run auditoria:clean
+      # === Elige qué script quieres correr ===
+      # Opción 1: tu suite principal por sitemap (recomendada)
+      - name: Run audit (test:evidencias)
+        run: npm run test:evidencias
 
-      - name: Run A11Y audit (sitemap + discovery)
-        run: npm run auditoria
+      # Opción 2: el "clean" (si quieres ese flujo):
+      # - name: Run audit (auditoria:clean)
+      #   run: npm run auditoria:clean
 
-      - name: Tree auditorias/
-        if: always()
-        run: |
-          echo "Contenido de auditorias/:"
-          ls -la
-          echo ""
-          if [ -d "auditorias" ]; then
-            find auditorias -maxdepth 2 -type d -print
-            find auditorias -type f | head -n 100
-          else
-            echo "No existe la carpeta auditorias (¿falló antes de generarse?)."
-          fi
-
-      - name: Upload audit artifacts
+      # Sube artefactos de Cypress (vídeos/screenshots)
+      - name: Upload Cypress artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: auditorias
-          path: auditorias/
-          if-no-files-found: warn
-          retention-days: 14
+          name: cypress-artifacts
+          path: |
+            cypress/videos/**
+            cypress/screenshots/**
+          retention-days: 7
+
+      # Sube informes/CSV/TSV/HTML si tus scripts los generan
+      - name: Upload audit outputs (reports)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-reports
+          path: |
+            **/*.csv
+            **/*.tsv
+            **/*informe*.html
+            **/auditoria*/**/*.html
+            **/auditoria*/**/*.csv
+            **/auditoria*/**/*.tsv
+          retention-days: 7
