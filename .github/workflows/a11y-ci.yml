@@ -13,27 +13,40 @@ jobs:
       SITE_URL: https://www.hiexperience.es
       LC_ALL: C.UTF-8
       LANG: C.UTF-8
+      # guarda la caché de binarios de Cypress en el workspace (evita permisos raros)
+      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node (LTS)
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      # Asegura devDependencies
+      - name: Install dependencies (dev)
+        run: npm ci --include=dev
+        env:
+          NODE_ENV: development
 
-      - name: Cypress install
-        uses: cypress-io/github-action@v6
-        with:
-          runTests: false
+      # Instala y verifica el binario de Cypress de forma explícita
+      - name: Install Cypress binary
+        run: npx cypress install
 
-      # Usa tu suite principal (o cambia a auditoria:clean si quieres)
-      - name: Run audit
+      - name: Verify Cypress binary
+        run: |
+          npx cypress --version
+          echo "node_modules/.bin contents:"
+          ls -la node_modules/.bin | sed -n '1,120p'
+
+      # Ejecuta tu suite
+      - name: Run audit (test:evidencias)
         run: npm run test:evidencias
 
+      # Artefactos (vídeos/screenshots + informes)
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -44,4 +57,3 @@ jobs:
             cypress/screenshots/**
             auditorias/**/*
           retention-days: 7
-
