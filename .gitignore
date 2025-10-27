@@ -1,5 +1,13 @@
-node_modulesauditorias/
-
+# deps
+node_modules/
+package-lock.json#backup? (no, ¡sí se versiona!)
+# Cypress artefactos
 cypress/screenshots/
 cypress/videos/
-.env
+cypress/downloads/
+auditorias/
+# SO / editores
+.DS_Store
+.idea/
+.vscode/
+
