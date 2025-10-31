@@ -1,43 +1,64 @@
-name: a11y
+name: Auditoría de Accesibilidad (Cypress + axe-core)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master, principal ]
-  pull_request:
+    inputs:
+      site_url:
+        description: "Dominio o URL principal a auditar (ej: https://www.hiexperience.es)"
+        required: true
+        default: "https://www.hiexperience.es"
 
 jobs:
-  a11y:
+  a11y-audit:
     runs-on: ubuntu-latest
-    env:
-      SITE_URL: https://www.hiexperience.es
-      LC_ALL: C.UTF-8
-      LANG: C.UTF-8
+    timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      # 1️⃣ Clona el repositorio
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # 2️⃣ Configura Node.js
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
 
-      # La action hará: npm ci, instalar Cypress y ejecutar tu comando
-      - name: Cypress run (usa tu script)
-        uses: cypress-io/github-action@v6
-        with:
-          install-command: npm ci
-          command: npm run test:evidencias
-          # Si quieres limitar URLs:
-          # env: A11Y_MAX_URLS=100
+      # 3️⃣ Instala dependencias
+      - name: Instalar dependencias
+        run: npm ci
 
-      - name: Upload artifacts
-        if: always()
+      # 4️⃣ Ejecuta crawler (rastrea todas las URLs internas)
+      - name: Rastreo de URLs
+        run: |
+          SITE_URL=${{ github.event.inputs.site_url }} npm run crawl
+        env:
+          SITE_URL: ${{ github.event.inputs.site_url }}
+
+      # 5️⃣ Ejecuta auditoría con Cypress + axe-core
+      - name: Auditoría de accesibilidad
+        run: |
+          SITE_URL=${{ github.event.inputs.site_url }} npm run auditoria
+        env:
+          SITE_URL: ${{ github.event.inputs.site_url }}
+
+      # 6️⃣ Genera informe Excel
+      - name: Generar informe Excel
+        run: npm run export
+
+      # 7️⃣ Publica artefactos (resultados + capturas + informe)
+      - name: Subir artefactos de auditoría
         uses: actions/upload-artifact@v4
         with:
-          name: audit-artifacts
+          name: auditoria-a11y-${{ github.run_number }}
           path: |
-            cypress/videos/**
-            cypress/screenshots/**
-            auditorias/**/*
-          retention-days: 7
+            auditorias/**
+          retention-days: 30
+
+      # 8️⃣ Publica resumen rápido en la consola
+      - name: Resumen de ejecución
+        run: |
+          echo "✅ Auditoría completada."
+          echo "📊 Informe y capturas disponibles como artefactos."
+          echo "🌐 Sitio auditado: ${{ github.event.inputs.site_url }}"
+          echo "🏁 Ejecución nº ${{ github.run_number }}"
