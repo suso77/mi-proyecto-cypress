@@ -1,43 +1,97 @@
-name: a11y
+name: Auditoría de Accesibilidad Paralela (Cypress + axe-core)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master, principal ]
-  pull_request:
+    inputs:
+      site_url:
+        description: "Dominio o URL principal a auditar (ej: https://www.hiexperience.es)"
+        required: true
+        default: "https://www.hiexperience.es"
 
 jobs:
-  a11y:
+  # 1️⃣ Crawler: genera la lista de URLs
+  crawler:
     runs-on: ubuntu-latest
-    env:
-      SITE_URL: https://www.hiexperience.es
-      LC_ALL: C.UTF-8
-      LANG: C.UTF-8
-
+    outputs:
+      url-list: ${{ steps.get-urls.outputs.urls }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
+      - name: Instalar dependencias
+        run: npm ci
 
-      # La action hará: npm ci, instalar Cypress y ejecutar tu comando
-      - name: Cypress run (usa tu script)
-        uses: cypress-io/github-action@v6
+      - name: Ejecutar crawler
+        id: crawl
+        run: |
+          SITE_URL=${{ github.event.inputs.site_url }} npm run crawl
+          echo "✅ Crawl completado"
+      
+      - name: Leer URLs del archivo y exportar JSON como variable
+        id: get-urls
+        run: |
+          urls=$(cat scripts/urls.json | jq -c '.')
+          echo "urls=$urls" >> $GITHUB_OUTPUT
+
+  # 2️⃣ Auditoría paralela (usa matriz)
+  audit:
+    needs: crawler
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        url: ${{ fromJson(needs.crawler.outputs.url-list) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          install-command: npm ci
-          command: npm run test:evidencias
-          # Si quieres limitar URLs:
-          # env: A11Y_MAX_URLS=100
+          node-version: 20
+      - name: Instalar dependencias
+        run: npm ci
 
-      - name: Upload artifacts
-        if: always()
+      - name: Auditoría de accesibilidad
+        run: |
+          echo "Auditoría de: ${{ matrix.url }}"
+          SITE_URL=${{ matrix.url }} npx cypress run --browser chrome --headless
+        env:
+          SITE_URL: ${{ matrix.url }}
+
+      - name: Subir resultados parciales
         uses: actions/upload-artifact@v4
         with:
-          name: audit-artifacts
-          path: |
-            cypress/videos/**
-            cypress/screenshots/**
-            auditorias/**/*
-          retention-days: 7
+          name: auditoria-${{ matrix.url }}
+          path: auditorias/**
+          retention-days: 10
+
+  # 3️⃣ Agregador final: fusiona resultados y genera Excel
+  merge-report:
+    needs: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Descargar todos los artefactos previos
+        uses: actions/download-artifact@v4
+        with:
+          path: auditorias/
+
+      - name: Generar informe Excel consolidado
+        run: npm run export
+
+      - name: Publicar informe consolidado
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-final-a11y
+          path: auditorias/**/informe-a11y-*.xlsx
+          retention-days: 30
+
+      - name: Resumen final
+        run: |
+          echo "✅ Auditoría completada con éxito"
+          echo "📊 Informe Excel consolidado generado correctamente"
