@@ -1,109 +1,97 @@
-<<<<<<< HEAD
-name: a11y
+ame: Auditoría de Accesibilidad Paralela (Cypress + axe-core)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master, principal ]
-  pull_request:
-=======
-name: Auditoría A11Y (Cypress + axe-core)
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-  workflow_dispatch:
->>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
+    inputs:
+      site_url:
+        description: "Dominio o URL principal a auditar (ej: https://www.hiexperience.es)"
+        required: true
+        default: "https://www.hiexperience.es"
 
 jobs:
-  a11y:
+  # 1️⃣ Crawler: genera la lista de URLs
+  crawler:
     runs-on: ubuntu-latest
-    env:
-<<<<<<< HEAD
-      SITE_URL: https://www.hiexperience.es
-      LC_ALL: C.UTF-8
-      LANG: C.UTF-8
-      # guarda la caché de binarios de Cypress en el workspace (evita permisos raros)
-=======
-      BASE_URL: "https://www.hiexperience.es"
->>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
-      CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
-      SITE_URL: "https://www.hiexperience.es"
-      PUBLIC_BASE_URL: "https://www.hiexperience.es"
-
+    outputs:
+      url-list: ${{ steps.get-urls.outputs.urls }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-<<<<<<< HEAD
-      - name: Setup Node (LTS)
-=======
-      - name: Setup Node 20.x (obligatorio)
->>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-
-<<<<<<< HEAD
-      # Asegura devDependencies
-      - name: Install dependencies (dev)
-        run: npm ci --include=dev
-        env:
-          NODE_ENV: development
-
-      # Instala y verifica el binario de Cypress de forma explícita
-      - name: Install Cypress binary
-        run: npx cypress install
-
-      - name: Verify Cypress binary
-        run: |
-          npx cypress --version
-          echo "node_modules/.bin contents:"
-          ls -la node_modules/.bin | sed -n '1,120p'
-
-      # Ejecuta tu suite
-      - name: Run audit (test:evidencias)
-        run: npm run test:evidencias
-
-      # Artefactos (vídeos/screenshots + informes)
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: audit-artifacts
-          path: |
-            cypress/videos/**
-            cypress/screenshots/**
-            auditorias/**/*
-          retention-days: 7
-=======
+          node-version: 20
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Instalar binario de Cypress
-        run: npx cypress install
-
-      - name: Verificar Cypress
-        run: npx cypress verify
-
-      - name: Smoke ping a BASE_URL (no bloqueante)
+      - name: Ejecutar crawler
+        id: crawl
         run: |
-          echo "Probando disponibilidad de $BASE_URL…"
-          curl -I -L --retry 3 --retry-delay 2 --retry-all-errors --max-time 15 "$BASE_URL" || true
+          SITE_URL=${{ github.event.inputs.site_url }} npm run crawl
+          echo "✅ Crawl completado"
+      
+      - name: Leer URLs del archivo y exportar JSON como variable
+        id: get-urls
+        run: |
+          urls=$(cat scripts/urls.json | jq -c '.')
+          echo "urls=$urls" >> $GITHUB_OUTPUT
 
-      - name: Limpiar informe anterior
-        run: npm run auditoria:clean
+  # 2️⃣ Auditoría paralela (usa matriz)
+  audit:
+    needs: crawler
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        url: ${{ fromJson(needs.crawler.outputs.url-list) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Instalar dependencias
+        run: npm ci
 
-      - name: Ejecutar auditoría A11Y (mapa del sitio + descubrimiento)
-        run: npm run auditoria
+      - name: Auditoría de accesibilidad
+        run: |
+          echo "Auditoría de: ${{ matrix.url }}"
+          SITE_URL=${{ matrix.url }} npx cypress run --browser chrome --headless
+        env:
+          SITE_URL: ${{ matrix.url }}
 
-      - name: Subir artefactos de auditoría
-        if: always()
+      - name: Subir resultados parciales
         uses: actions/upload-artifact@v4
         with:
-          name: auditorias
+          name: auditoria-${{ matrix.url }}
+          path: auditorias/**
+          retention-days: 10
+
+  # 3️⃣ Agregador final: fusiona resultados y genera Excel
+  merge-report:
+    needs: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Descargar todos los artefactos previos
+        uses: actions/download-artifact@v4
+        with:
           path: auditorias/
-          retention-days: 14
->>>>>>> dc55ef9 (ci(a11y): Node 20 + instalar/verificar Cypress antes de ejecutar scripts)
+
+      - name: Generar informe Excel consolidado
+        run: npm run export
+
+      - name: Publicar informe consolidado
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-final-a11y
+          path: auditorias/**/informe-a11y-*.xlsx
+          retention-days: 30
+
+      - name: Resumen final
+        run: |
+          echo "✅ Auditoría completada con éxito"
+          echo "📊 Informe Excel consolidado generado correctamente"
