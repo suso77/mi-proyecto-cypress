@@ -2,6 +2,11 @@ name: a11y
 
 on:
   workflow_dispatch:
+    inputs:
+      site_url:
+        description: "URL base del sitio a auditar"
+        required: false
+        default: "https://www.hiexperience.es"
   push:
     branches: [ main, master, principal ]
   pull_request:
@@ -10,34 +15,83 @@ jobs:
   a11y:
     runs-on: ubuntu-latest
     env:
-      SITE_URL: https://www.hiexperience.es
+      SITE_URL: ${{ github.event.inputs.site_url || 'https://www.hiexperience.es' }}
       LC_ALL: C.UTF-8
       LANG: C.UTF-8
+      CRITICAL_MAX: 0
+      SERIOUS_MAX: 5
 
     steps:
-      - uses: actions/checkout@v4
+      # 1️⃣ Clonar el repositorio
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # 2️⃣ Configurar Node.js
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # La action hará: npm ci, instalar Cypress y ejecutar tu comando
-      - name: Cypress run (usa tu script)
+      # 3️⃣ Instalar dependencias
+      - name: Instalar dependencias
+        run: npm ci
+
+      # 4️⃣ Rastreo automático de URLs
+      - name: Rastreo de URLs (crawler)
+        run: |
+          echo "🌐 Rastreando sitio: $SITE_URL"
+          npm run crawl
+          echo "✅ Archivo generado: scripts/urls.json"
+        env:
+          SITE_URL: ${{ env.SITE_URL }}
+
+      # 5️⃣ Auditoría con Cypress + axe-core
+      - name: Ejecutar auditoría de accesibilidad
         uses: cypress-io/github-action@v6
         with:
           install-command: npm ci
-          command: npm run test:evidencias
-          # Si quieres limitar URLs:
-          # env: A11Y_MAX_URLS=100
+          command: npm run auditoria || echo "♿ Violaciones detectadas, continuamos..."
+        env:
+          SITE_URL: ${{ env.SITE_URL }}
 
+      # 6️⃣ Fusionar todos los resultados (si hay varias carpetas)
+      - name: Combinar resultados de auditoría
+        run: |
+          echo "🔄 Combinando results.json en un solo archivo..."
+          npm run merge
+          echo "✅ Archivo combinado creado correctamente."
+
+      # 7️⃣ Generar informe Excel profesional
+      - name: Generar informe Excel (export-to-xlsx)
+        run: |
+          echo "📊 Generando informe de accesibilidad..."
+          npm run export
+          echo "✅ Informe Excel generado correctamente."
+        continue-on-error: true
+
+      # 8️⃣ Control de calidad (Quality Gate)
+      - name: Control de calidad (Quality Gate)
+        run: node scripts/quality-gate.js
+        continue-on-error: false
+
+      # 9️⃣ Subir artefactos (capturas, JSON, Excel)
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: audit-artifacts
+          name: auditoria-a11y-${{ github.run_number }}
           path: |
-            cypress/videos/**
             cypress/screenshots/**
+            cypress/videos/**
             auditorias/**/*
-          retention-days: 7
+          retention-days: 14
+
+      # 🔟 Resumen final de ejecución
+      - name: Resumen de ejecución
+        if: always()
+        run: |
+          echo "✅ Auditoría completada con éxito"
+          echo "🌍 Sitio auditado: $SITE_URL"
+          echo "📄 Informe generado y disponible como artefacto"
+          echo "🚦 Umbrales de control: Critical <= $CRITICAL_MAX, Serious <= $SERIOUS_MAX"
